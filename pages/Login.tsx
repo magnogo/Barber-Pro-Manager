@@ -126,7 +126,7 @@ export const Login = () => {
           
           <div className="relative z-10 space-y-10">
             <div>
-              <h2 className="text-3xl font-black mb-6 tracking-tighter leading-tight">Infraestrutura em Nuvem acesso de qualquer lugar</h2>
+              <h2 className="text-2xl font-black mb-6 tracking-tighter leading-tight uppercase">Intraestrutura em Nuvem acesso de qualquer lugar</h2>
               <p className="text-zinc-500 font-bold leading-relaxed text-sm">
                   Gerenciamento multi-unidade sem necessidade de servidores complexos. 
                   Seu banco de dados reside onde você já trabalha: no Google Drive.
