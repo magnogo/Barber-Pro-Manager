@@ -98,6 +98,28 @@ const FEATURES: FeatureDetail[] = [
   }
 ];
 
+// Moving FeatureCard component outside to fix TypeScript 'key' prop error
+interface FeatureCardProps {
+  feature: FeatureDetail;
+  onClick: () => void;
+}
+
+const FeatureCard: React.FC<FeatureCardProps> = ({ feature, onClick }) => (
+  <div 
+    onClick={onClick}
+    className="bg-white/5 border border-white/10 p-8 rounded-[2.5rem] backdrop-blur-md hover:bg-white/10 transition-all group cursor-pointer hover:scale-[1.02] active:scale-95 flex flex-col h-full"
+  >
+    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-6 transition-transform group-hover:scale-110 ${feature.color}`}>
+      <feature.icon size={30} />
+    </div>
+    <h4 className="text-xl font-black text-white mb-3 tracking-tight">{feature.title}</h4>
+    <p className="text-gray-400 text-sm leading-relaxed font-medium flex-1">{feature.shortDesc}</p>
+    <div className="mt-6 flex items-center gap-2 text-xs font-black text-blue-400 uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
+      Ver detalhes <ArrowRight size={14} />
+    </div>
+  </div>
+);
+
 export const LandingPage = () => {
   const { setView } = useApp();
   const [selectedFeature, setSelectedFeature] = useState<FeatureDetail | null>(null);
@@ -108,22 +130,6 @@ export const LandingPage = () => {
       element.scrollIntoView({ behavior: 'smooth' });
     }
   };
-
-  const FeatureCard = ({ feature }: { feature: FeatureDetail }) => (
-    <div 
-      onClick={() => setSelectedFeature(feature)}
-      className="bg-white/5 border border-white/10 p-8 rounded-[2.5rem] backdrop-blur-md hover:bg-white/10 transition-all group cursor-pointer hover:scale-[1.02] active:scale-95 flex flex-col h-full"
-    >
-      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-6 transition-transform group-hover:scale-110 ${feature.color}`}>
-        <feature.icon size={30} />
-      </div>
-      <h4 className="text-xl font-black text-white mb-3 tracking-tight">{feature.title}</h4>
-      <p className="text-gray-400 text-sm leading-relaxed font-medium flex-1">{feature.shortDesc}</p>
-      <div className="mt-6 flex items-center gap-2 text-xs font-black text-blue-400 uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
-        Ver detalhes <ArrowRight size={14} />
-      </div>
-    </div>
-  );
 
   return (
     <div className="min-h-screen bg-black text-white overflow-x-hidden font-sans selection:bg-blue-500 selection:text-white">
@@ -257,7 +263,7 @@ export const LandingPage = () => {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
            {FEATURES.map(f => (
-             <FeatureCard key={f.id} feature={f} />
+             <FeatureCard key={f.id} feature={f} onClick={() => setSelectedFeature(f)} />
            ))}
         </div>
       </section>

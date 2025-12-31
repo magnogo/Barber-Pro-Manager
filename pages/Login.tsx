@@ -106,7 +106,7 @@ export const Login = () => {
               {loading ? (
                   <Loader2 size={24} className="animate-spin text-black"/>
               ) : (
-                  <>Autenticar na Nuvem <LogIn size={18}/></>
+                  <>Entrar <LogIn size={18}/></>
               )}
             </button>
             
@@ -126,7 +126,7 @@ export const Login = () => {
           
           <div className="relative z-10 space-y-10">
             <div>
-              <h2 className="text-5xl font-black mb-6 tracking-tighter leading-[0.9]">Infraestrutura em Nuvem via Google Sheets</h2>
+              <h2 className="text-3xl font-black mb-6 tracking-tighter leading-tight">Infraestrutura em Nuvem acesso de qualquer lugar</h2>
               <p className="text-zinc-500 font-bold leading-relaxed text-sm">
                   Gerenciamento multi-unidade sem necessidade de servidores complexos. 
                   Seu banco de dados reside onde você já trabalha: no Google Drive.
