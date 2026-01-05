@@ -1,8 +1,8 @@
 
 import { Role, User, Barbershop, Service, Appointment, Client, Payment } from './types';
 
-// URL DO LOGO ATUALIZADA
-export const LOGO_URL = "https://i.ibb.co/39R9gskL/Barber-Pro-Manager.png";
+// URL DO LOGO ATUALIZADA - VERSÃO FINAL BARBER XPRO
+export const LOGO_URL = "https://i.ibb.co/XfrghJNt/Barber-XPro.png";
 
 // Helper de data futura
 const nextMonth = new Date();

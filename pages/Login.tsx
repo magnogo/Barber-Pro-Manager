@@ -42,7 +42,7 @@ export const Login = () => {
           
           <div className="mb-10 text-center md:text-left">
             <div className="flex flex-col items-center gap-3 mb-8 justify-center md:justify-start">
-               <div className="w-48 h-20 flex items-center justify-center">
+               <div className="w-72 h-32 flex items-center justify-center">
                  <img src={LOGO_URL} alt="Barber Pro Manager" className="w-full h-full object-contain" />
                </div>
             </div>

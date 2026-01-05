@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { Role, User, Appointment, Service } from '../types';
 import { LOGO_URL } from '../constants';
 import { Clock, User as UserIcon, Scissors, Phone, Play, CalendarCheck, CheckCircle2, AlertCircle, LogOut, ArrowLeft, ArrowDown, RefreshCw, Wifi } from 'lucide-react';
+import { sanitizeTime } from './Schedule';
 
 export const TvDashboard = () => {
   const { users, appointments, services, currentUser, selectedBarbershop, syncWithGoogleSheets, clients, updateAppointmentStatus, setView } = useApp();
@@ -22,7 +23,6 @@ export const TvDashboard = () => {
   }, []);
 
   // AUTO-SYNC POLLING - 60s
-  // Busca novas informações da planilha automaticamente
   useEffect(() => {
     const pollData = async () => {
       if (selectedBarbershop?.googleSheetsUrl) {
@@ -32,18 +32,12 @@ export const TvDashboard = () => {
         } catch (err) {
           console.error("Erro no polling do Monitor:", err);
         } finally {
-          // Pequeno delay para o feedback visual não ser instantâneo demais
           setTimeout(() => setIsAutoSyncing(false), 2000);
         }
       }
     };
-
-    // Executa a cada 60 segundos
-    const syncInterval = setInterval(pollData, 60000);
-    
-    // Executa uma vez ao montar
     pollData();
-
+    const syncInterval = setInterval(pollData, 60000);
     return () => clearInterval(syncInterval);
   }, [selectedBarbershop?.googleSheetsUrl]);
 
@@ -55,15 +49,13 @@ export const TvDashboard = () => {
   };
   
   const currentSlotString = getCurrentSlotString();
-  
-  // Data de hoje no formato YYYY-MM-DD local
   const todayISO = useMemo(() => new Date().toLocaleDateString('en-CA'), []);
 
   useEffect(() => {
     const autoStartAppointments = () => {
         appointments.forEach(apt => {
             if (String(apt.barbershopId).trim() === String(currentUser?.barbershopId).trim() && apt.date === todayISO) {
-                if (apt.time === currentSlotString && (apt.status === 'PENDING' || apt.status === 'CONFIRMED')) {
+                if (sanitizeTime(apt.time) === currentSlotString && (apt.status === 'PENDING' || apt.status === 'CONFIRMED')) {
                     updateAppointmentStatus(apt.id, 'IN_PROGRESS');
                 }
             }
@@ -72,7 +64,14 @@ export const TvDashboard = () => {
     autoStartAppointments();
   }, [currentSlotString, appointments, currentUser, todayISO, updateAppointmentStatus]);
   
-  const shopBarbers = users.filter(u => String(u.barbershopId).trim() === String(currentUser?.barbershopId).trim() && u.role !== Role.SUPER_ADMIN);
+  const shopBarbers = useMemo(() => {
+    return users.filter(u => 
+      String(u.barbershopId).trim() === String(currentUser?.barbershopId).trim() && 
+      u.role !== Role.SUPER_ADMIN &&
+      u.useSchedule === true
+    );
+  }, [users, currentUser]);
+
   const shopServices = services.filter(s => String(s.barbershopId).trim() === String(currentUser?.barbershopId).trim());
 
   const generateDynamicSlots = () => {
@@ -106,8 +105,8 @@ export const TvDashboard = () => {
       const service = getService(a.serviceId);
       const duration = service?.durationMinutes || 30;
       
-      const [startH, startM] = a.time.split(':').map(Number);
-      const startTotalMinutes = startH * 60 + startM;
+      const [startH, startM] = sanitizeTime(a.time).split(':').map(Number);
+      const startTotalMinutes = (startH || 0) * 60 + (startM || 0);
       const endTotalMinutes = startTotalMinutes + duration;
 
       return slotTotalMinutes >= startTotalMinutes && slotTotalMinutes < endTotalMinutes;
@@ -149,7 +148,6 @@ export const TvDashboard = () => {
                   Sair do Modo TV
               </button>
 
-              {/* Indicador de Auto-Sincronização */}
               <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all duration-500 ${
                 isAutoSyncing 
                   ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' 
@@ -225,7 +223,7 @@ export const TvDashboard = () => {
 
                   const isPast = time < currentSlotString;
                   const appointment = getAppointmentAtTime(barber.id, time);
-                  const isStart = appointment?.time === time;
+                  const isStart = sanitizeTime(appointment?.time || '') === time;
                   
                   const client = appointment ? getClient(appointment.clientId) : null;
                   const service = appointment ? getService(appointment.serviceId) : null;
@@ -342,7 +340,7 @@ export const TvDashboard = () => {
         {shopBarbers.length === 0 && (
              <div className="w-full h-full flex items-center justify-center text-gray-500 flex-col gap-4">
                  <CalendarCheck size={64} className="opacity-20" />
-                 <p className="text-xl">Nenhum barbeiro cadastrado para exibição.</p>
+                 <p className="text-xl">Nenhum barbeiro com agenda ativa para exibição.</p>
              </div>
         )}
       </div>

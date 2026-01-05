@@ -1,5 +1,5 @@
 {
-  "name": "Barber Pro Manager",
+  "name": "Barber XPro Manager",
   "description": "Uma plataforma SaaS para gerenciamento de barbearias com multi-inquilino, agendamento, configuração de fluxo do WhatsApp e insights de IA.",
   "requestFramePermissions": [
     "camera"

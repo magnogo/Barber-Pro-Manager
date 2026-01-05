@@ -1,17 +1,10 @@
 
 import React, { createContext, useContext, useState, useEffect, PropsWithChildren } from 'react';
-import { fetchSheetData, saveToSheet } from '../services/googleSheetsService';
-import { User, Barbershop, Service, Appointment, Role, ViewState, Client, Payment } from '../types';
+import { User, Barbershop, Service, Appointment, Role, ViewState, Client, WhatsAppConfig, Payment } from '../types';
 import { MOCK_USERS, MOCK_BARBERSHOPS, MOCK_SERVICES, MOCK_CLIENTS, MOCK_APPOINTMENTS } from '../constants';
+import { fetchSheetData, saveToSheet } from '../services/googleSheetsService';
 
-interface ExtendedBarbershopForm extends Omit<Barbershop, 'id'> {
-  id?: string;
-  adminName?: string;
-  adminEmail?: string;
-  adminPass?: string;
-  initialPaymentStatus?: string;
-  paymentMethod?: string;
-}
+const MASTER_SHEET_URL = "https://script.google.com/macros/s/AKfycbx3LelLNGM298cM8n9nQDH7AoF0HQ5t3vYe8dWzs4RzlsI2iCggYoaF-mGgfZ_EJt1D/exec";
 
 interface AppContextType {
   currentUser: User | null;
@@ -26,11 +19,19 @@ interface AppContextType {
   view: ViewState;
   setView: (view: ViewState) => void;
   barbershops: Barbershop[];
-  addBarbershop: (shop: ExtendedBarbershopForm) => Promise<void>;
-  updateBarbershop: (shop: ExtendedBarbershopForm) => Promise<void>;
-  updateBarbershopConfig: (id: string, config: any) => Promise<void>;
+  payments: any[]; 
+  unitAdmins: any[]; 
+  networkTotalRevenue: number;
+  networkTotalAppointments: number;
+  addBarbershop: (shop: any) => Promise<void>;
+  updateBarbershop: (shop: any) => Promise<void>;
+  updateUnitAdmin: (admin: any) => Promise<void>;
+  updateBarbershopConfig: (id: string, config: WhatsAppConfig) => Promise<void>;
+  syncWithGoogleSheets: (url: string) => Promise<void>;
+  syncMasterData: () => Promise<void>;
+  calculateNetworkMetrics: () => Promise<void>;
   users: User[];
-  addUser: (user: User, passwordForSignup?: string) => Promise<void>;
+  addUser: (user: User) => Promise<void>;
   updateUser: (user: User) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   services: Service[];
@@ -45,411 +46,361 @@ interface AppContextType {
   addClient: (client: Omit<Client, 'id'>) => Promise<void>;
   updateClient: (client: Client) => Promise<void>;
   deleteClient: (id: string) => Promise<void>;
-  payments: Payment[];
-  syncWithGoogleSheets: (url: string) => Promise<void>;
-  masterUrl: string;
-  setMasterUrl: (url: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
-
-const DEFAULT_MASTER_URL = "https://script.google.com/macros/s/AKfycbzIK-qjM6XWHLgETuQp8d9yyQOnUKPNawZSD3jBx5mPQtWgYbvJ6c5iVgpwaRC6VhxO/exec";
-
-const normalizeDateSync = (val: any): string => {
-  if (!val) return '';
-  const str = String(val).trim();
-  if (str.includes('T')) return str.split('T')[0];
-  if (str.includes('/')) {
-    const parts = str.split('/');
-    if (parts.length === 3) {
-      if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
-      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-    }
-  }
-  return str;
-};
-
-const parseTime = (val: any): string => {
-  if (!val) return '09:00';
-  const str = String(val).trim();
-  if (str.includes('T')) {
-    try {
-      const d = new Date(str);
-      if (!isNaN(d.getTime())) {
-        const h = d.getHours().toString().padStart(2, '0');
-        const m = d.getMinutes().toString().padStart(2, '0');
-        return `${h}:${m}`;
-      }
-    } catch (e) {
-      const timePart = str.split('T')[1];
-      const timeComponents = timePart.split(':');
-      if (timeComponents.length >= 2) {
-        return `${timeComponents[0].padStart(2, '0')}:${timeComponents[1].padStart(2, '0')}`;
-      }
-    }
-  }
-  const match = str.match(/(\d{1,2}):(\d{1,2})/);
-  if (match) {
-    return `${match[1].padStart(2, '0')}:${match[2].padStart(2, '0')}`;
-  }
-  return str;
-};
-
-const findValue = (obj: any, key: string) => {
-    if (!obj) return undefined;
-    const targetKey = key.toLowerCase().replace(/[^a-z0-9]/g, '').trim();
-    const mappings: Record<string, string[]> = {
-        starttime: ['inicio', 'entrada', 'horainicio', 'start'],
-        endtime: ['fim', 'saida', 'horafim', 'end'],
-        useschedule: ['agenda', 'utilizaagenda', 'ativo'],
-        workdays: ['dias', 'semana'],
-        barberid: ['barbeiro', 'idbarbeiro', 'idbarber'],
-        clientid: ['cliente', 'idcliente', 'idclient'],
-        serviceid: ['servico', 'idservico', 'idservice'],
-        googlesheetsurl: ['url', 'planilha', 'sheets', 'googlesheetsurl'],
-        durationminutes: ['duracao', 'minutos', 'tempo', 'duration'],
-        price: ['preco', 'valor', 'price', 'cost'],
-        barbershopid: ['barbershopid', 'empresa', 'unidade', 'idunidade'],
-        photo: ['foto', 'imagem', 'avatar', 'photo', 'url'],
-        password: ['senha', 'password', 'pass', 'credential']
-    };
-    const realKey = Object.keys(obj).find(k => {
-        const kClean = k.toLowerCase().replace(/[^a-z0-9]/g, '').trim();
-        if (kClean === targetKey) return true;
-        if (mappings[targetKey]) return mappings[targetKey].some(m => kClean.includes(m));
-        return false;
-    });
-    return realKey ? obj[realKey] : undefined;
-};
 
 export const AppProvider = ({ children }: PropsWithChildren<{}>) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null); 
   const [selectedBarbershop, setSelectedBarbershop] = useState<Barbershop | null>(null);
   const [view, setView] = useState<ViewState>('MARKETING');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [isAutoSyncing, setIsAutoSyncing] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
-  const [barbershops, setBarbershops] = useState<Barbershop[]>([]);
+  
+  const [barbershops, setBarbershops] = useState<Barbershop[]>(MOCK_BARBERSHOPS);
+  const [payments, setPayments] = useState<any[]>([]);
+  const [unitAdmins, setUnitAdmins] = useState<any[]>([]);
+  const [networkTotalRevenue, setNetworkTotalRevenue] = useState(0);
+  const [networkTotalAppointments, setNetworkTotalAppointments] = useState(0);
+
   const [users, setUsers] = useState<User[]>(MOCK_USERS);
   const [services, setServices] = useState<Service[]>(MOCK_SERVICES);
   const [appointments, setAppointments] = useState<Appointment[]>(MOCK_APPOINTMENTS);
   const [clients, setClients] = useState<Client[]>(MOCK_CLIENTS);
-  const [masterUrl, setMasterUrl] = useState<string>(DEFAULT_MASTER_URL);
 
+  // Sincronização inicial ao carregar o App
   useEffect(() => {
-    refreshMasterData();
+    syncMasterData();
   }, []);
 
-  // Polling Automático de Dados (Back-end como serviço)
-  useEffect(() => {
-    let interval: any;
-    
-    if (selectedBarbershop?.googleSheetsUrl && currentUser) {
-        // Primeira carga imediata
-        syncWithGoogleSheets(selectedBarbershop.googleSheetsUrl);
+  const calculateNetworkMetrics = async () => {
+    if (barbershops.length === 0) return;
+    setIsAutoSyncing(true);
+    let totalRevenue = 0;
+    let totalApts = 0;
 
-        // Polling a cada 60 segundos
-        interval = setInterval(() => {
-            syncWithGoogleSheets(selectedBarbershop.googleSheetsUrl!);
-        }, 60000);
-    }
+    try {
+      const shopsToSync = barbershops.filter(s => s.googleSheetsUrl && s.googleSheetsUrl.includes('script.google.com'));
+      
+      const syncPromises = shopsToSync.map(async (shop) => {
+        const [apts, svcs] = await Promise.all([
+          fetchSheetData(shop.googleSheetsUrl!, 'Agendamentos'),
+          fetchSheetData(shop.googleSheetsUrl!, 'Servicos')
+        ]);
 
-    return () => clearInterval(interval);
-  }, [selectedBarbershop?.id, currentUser?.id]);
-
-  const refreshMasterData = async () => {
-      setLoading(true);
-      try {
-          const shopsData = await fetchSheetData(DEFAULT_MASTER_URL, 'Empresas');
-          if (shopsData && Array.isArray(shopsData)) {
-              const syncedShops: Barbershop[] = shopsData.map(s => ({
-                  id: String(findValue(s, 'id')).trim(),
-                  name: String(findValue(s, 'name') || 'Unidade'),
-                  address: String(findValue(s, 'address') || ''),
-                  phone: String(findValue(s, 'phone') || ''),
-                  email: String(findValue(s, 'email') || ''),
-                  logo: String(findValue(s, 'logo') || ''),
-                  isActive: String(findValue(s, 'isActive')).toLowerCase() === 'true',
-                  googleSheetsUrl: String(findValue(s, 'googleSheetsUrl') || findValue(s, 'planilha') || ''),
-                  plan: String(findValue(s, 'plan') || 'Básico'),
-                  monthlyFee: Number(findValue(s, 'monthlyFee') || 0)
-              }));
-              setBarbershops(syncedShops);
-          } else {
-              setBarbershops(MOCK_BARBERSHOPS);
+        if (apts && Array.isArray(apts)) {
+          totalApts += apts.length;
+          if (svcs && Array.isArray(svcs)) {
+            apts.forEach(apt => {
+              const service = svcs.find(s => String(s.id) === String(apt.serviceId));
+              if (service) totalRevenue += Number(service.price || 0);
+            });
           }
-      } catch (err) {
-          setBarbershops(MOCK_BARBERSHOPS);
-      } finally {
-          setLoading(false);
+        }
+      });
+
+      await Promise.all(syncPromises);
+      setNetworkTotalRevenue(totalRevenue);
+      setNetworkTotalAppointments(totalApts);
+    } catch (error) {
+      console.error("Erro ao consolidar métricas da rede:", error);
+    } finally {
+      setIsAutoSyncing(false);
+    }
+  };
+
+  const syncMasterData = async () => {
+    if (!MASTER_SHEET_URL) return;
+    setIsAutoSyncing(true);
+    try {
+      const [shops, payData, adminData] = await Promise.all([
+        fetchSheetData(MASTER_SHEET_URL, 'Empresas'),
+        fetchSheetData(MASTER_SHEET_URL, 'ControlePagamentos'),
+        fetchSheetData(MASTER_SHEET_URL, 'AdministradoresUnidades')
+      ]);
+
+      if (shops) setBarbershops(shops);
+      if (payData) setPayments(payData);
+      
+      if (adminData && Array.isArray(adminData)) {
+        setUnitAdmins(adminData);
+        
+        // Mapeia administradores da planilha para o estado de usuários do sistema
+        const sheetUsers: User[] = adminData.map((adm: any) => ({
+          id: adm.id,
+          name: adm.name,
+          email: adm.email,
+          role: (adm.role || Role.BARBERSHOP_ADMIN) as Role,
+          barbershopId: adm.barbershopId,
+          status: adm.status,
+          photo: adm.urlfoto // Mapeia urlfoto para photo
+        }));
+
+        setUsers(prev => {
+          const existingEmails = new Set(prev.map(u => u.email.toLowerCase()));
+          const newUsers = sheetUsers.filter(u => u.email && !existingEmails.has(u.email.toLowerCase()));
+          // Atualiza dados de usuários existentes se necessário (como a foto)
+          const updatedPrev = prev.map(u => {
+              const fromSheet = sheetUsers.find(su => su.email.toLowerCase() === u.email.toLowerCase());
+              return fromSheet ? { ...u, ...fromSheet } : u;
+          });
+          return [...updatedPrev, ...newUsers];
+        });
       }
+      
+      if (shops) {
+          setTimeout(() => calculateNetworkMetrics(), 100);
+      }
+    } catch (error) {
+      console.error("Erro ao sincronizar dados master:", error);
+    } finally {
+      setIsAutoSyncing(false);
+    }
+  };
+
+  const syncWithGoogleSheets = async (url: string) => {
+    if (!url) return;
+    setIsAutoSyncing(true);
+    try {
+      const [newAppointments, newClients, newServices, newUsers] = await Promise.all([
+        fetchSheetData(url, 'Agendamentos'),
+        fetchSheetData(url, 'Clientes'),
+        fetchSheetData(url, 'Servicos'),
+        fetchSheetData(url, 'Funcionarios')
+      ]);
+
+      if (newAppointments) setAppointments(newAppointments);
+      if (newClients) setClients(newClients);
+      if (newServices) setServices(newServices);
+      
+      if (newUsers && Array.isArray(newUsers)) {
+        setUsers(prev => {
+          const existingEmails = new Set(prev.map(u => u.email.toLowerCase()));
+          const filteredNewUsers = newUsers.filter(u => u.email && !existingEmails.has(u.email.toLowerCase()));
+          // Atualiza dados de usuários existentes se necessário
+          const updatedPrev = prev.map(u => {
+              const fromSheet = newUsers.find(su => su.email && su.email.toLowerCase() === u.email.toLowerCase());
+              return fromSheet ? { ...u, ...fromSheet } : u;
+          });
+          return [...updatedPrev, ...filteredNewUsers];
+        });
+      }
+    } finally {
+      setIsAutoSyncing(false);
+    }
   };
 
   const login = async (email: string, password?: string) => {
     setLoading(true);
     setLoginError(null);
     try {
-        if (email === 'admin@platform.com' && password === 'admin123') {
-            const superUser = MOCK_USERS.find(u => u.role === Role.SUPER_ADMIN)!;
-            setCurrentUser(superUser);
-            setView('SUPER_ADMIN');
-            return;
-        }
-
-        let foundAdmin = null;
-        try {
-          const adminsData = await fetchSheetData(DEFAULT_MASTER_URL, 'AdministradoresUnidades');
-          if (adminsData && Array.isArray(adminsData)) {
-              foundAdmin = adminsData.find(adm => {
-                  const admEmail = findValue(adm, 'email');
-                  const admPass = findValue(adm, 'password');
-                  const emailMatch = String(admEmail).toLowerCase() === email.toLowerCase();
-                  return emailMatch && (!password || !admPass || String(admPass) === password);
-              });
-          }
-        } catch (e) { }
-
-        if (foundAdmin) {
-            const shopId = String(findValue(foundAdmin, 'barbershopId')).trim();
-            const shop = barbershops.find(s => s.id === shopId);
-            const user: User = {
-                id: String(findValue(foundAdmin, 'id')),
-                name: String(findValue(foundAdmin, 'name')),
-                email: String(findValue(foundAdmin, 'email')),
-                role: (findValue(foundAdmin, 'role') as Role) || Role.BARBER,
-                barbershopId: shopId
-            };
+        const cleanEmail = email.trim().toLowerCase();
+        const user = users.find(u => u.email.toLowerCase() === cleanEmail);
+        
+        if (user) {
             setCurrentUser(user);
-            if (shop) {
-                setSelectedBarbershop(shop);
-                setView('DASHBOARD');
-            } else {
+            if (user.role === Role.SUPER_ADMIN) {
                 setView('SUPER_ADMIN');
+                await syncMasterData();
+            } else {
+                const shop = barbershops.find(s => String(s.id).trim() === String(user.barbershopId).trim());
+                if (shop) {
+                    setSelectedBarbershop(shop);
+                    if (shop.googleSheetsUrl) {
+                        await syncWithGoogleSheets(shop.googleSheetsUrl);
+                    }
+                    setView('DASHBOARD');
+                } else if (user.role === Role.BARBERSHOP_ADMIN) {
+                    // Se for admin mas a barbearia ainda não carregou, tenta um sync forçado
+                    await syncMasterData();
+                    const shopRetry = barbershops.find(s => String(s.id).trim() === String(user.barbershopId).trim());
+                    if (shopRetry) {
+                      setSelectedBarbershop(shopRetry);
+                      if (shopRetry.googleSheetsUrl) await syncWithGoogleSheets(shopRetry.googleSheetsUrl);
+                      setView('DASHBOARD');
+                    } else {
+                      setLoginError("Unidade não encontrada para este administrador.");
+                    }
+                } else {
+                  setView('DASHBOARD');
+                }
             }
-            return;
+        } else {
+            setLoginError("Usuário não encontrado. Verifique se o e-mail está correto na planilha master.");
         }
-
-        const mockUser = MOCK_USERS.find(u => u.email.toLowerCase() === email.toLowerCase());
-        if (mockUser) {
-          setCurrentUser(mockUser);
-          const shop = barbershops.find(s => s.id === mockUser.barbershopId);
-          if (shop) setSelectedBarbershop(shop);
-          if (mockUser.role === Role.SUPER_ADMIN) setView('SUPER_ADMIN');
-          else setView('DASHBOARD');
-          return;
-        }
-
-        const errorMsg = "E-mail ou senha incorretos";
-        setLoginError(errorMsg);
-        throw new Error(errorMsg);
-    } catch (err: any) {
-        if (!loginError) setLoginError(err.message || "Erro ao autenticar.");
-        throw err;
+    } catch (error) {
+      setLoginError("Erro ao processar login. Tente novamente.");
     } finally {
         setLoading(false);
     }
   };
 
-  const addBarbershop = async (form: ExtendedBarbershopForm) => {
-    const newShopId = `shop-${Date.now()}`;
-    const newAdminId = `adm-${Date.now()}`;
-    try {
-        await saveToSheet(DEFAULT_MASTER_URL, 'Empresas', [
-            newShopId, form.name, form.address, form.phone, form.email || '', 
-            form.logo || '', String(form.isActive), form.googleSheetsUrl || '', 
-            form.plan || '', Number(form.monthlyFee || 0)
-        ], 'insert');
-
-        await saveToSheet(DEFAULT_MASTER_URL, 'AdministradoresUnidades', [
-            newAdminId, 
-            newShopId, 
-            form.adminName || '', 
-            form.adminEmail || '', 
-            Role.BARBERSHOP_ADMIN, 
-            'ACTIVE',
-            form.adminPass || ''
-        ], 'insert');
-
-        refreshMasterData();
-    } catch (err) {
-        alert("Erro ao gravar na planilha mestre.");
+  const addBarbershop = async (shop: any) => {
+    const newId = `shop-${Date.now()}`;
+    const newShop = { ...shop, id: newId };
+    setBarbershops(prev => [...prev, newShop]);
+    
+    if (MASTER_SHEET_URL) {
+      await saveToSheet(MASTER_SHEET_URL, 'Empresas', [newShop], 'insert');
+      if (shop.adminName && shop.adminEmail) {
+        const newAdmin = { 
+          id: `adm-${Date.now()}`, 
+          barbershopId: newId, 
+          name: shop.adminName, 
+          email: shop.adminEmail, 
+          role: Role.BARBERSHOP_ADMIN, 
+          status: 'ACTIVE',
+          urlfoto: shop.adminPhoto || '' // Salva a foto do gestor
+        };
+        await saveToSheet(MASTER_SHEET_URL, 'AdministradoresUnidades', [newAdmin], 'insert');
+      }
+      const initialPayment = { id: `pay-${Date.now()}`, barbershopId: newId, amount: shop.monthlyFee, date: new Date().toISOString().split('T')[0], status: 'PAID', method: 'PIX', referenceMonth: new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) };
+      await saveToSheet(MASTER_SHEET_URL, 'ControlePagamentos', [initialPayment], 'insert');
     }
+    await syncMasterData();
   };
 
-  const updateBarbershop = async (form: ExtendedBarbershopForm) => { 
-    if (!form.id) return;
-    setBarbershops(prev => prev.map(item => item.id === form.id ? (form as any) : item));
-
-    try {
-        await saveToSheet(DEFAULT_MASTER_URL, 'Empresas', [
-            form.id, form.name, form.address, form.phone, form.email || '', 
-            form.logo || '', String(form.isActive), form.googleSheetsUrl || '', 
-            form.plan || '', Number(form.monthlyFee || 0)
-        ], 'update');
-
-        if (form.adminEmail || form.adminPass) {
-            await saveToSheet(DEFAULT_MASTER_URL, 'AdministradoresUnidades', [
-                `adm-${form.id}`, 
-                form.id, 
-                form.adminName || '', 
-                form.adminEmail || '', 
-                Role.BARBERSHOP_ADMIN, 
-                'ACTIVE',
-                form.adminPass || ''
-            ], 'update');
-        }
-    } catch (err) {
-        console.error("Erro ao atualizar unidade:", err);
+  const updateBarbershop = async (shop: any) => {
+    setBarbershops(prev => prev.map(s => s.id === shop.id ? { ...s, ...shop } : s));
+    if (MASTER_SHEET_URL) {
+      await saveToSheet(MASTER_SHEET_URL, 'Empresas', [shop], 'update');
+      
+      // Se tiver dados de admin no form de edição, atualiza na aba de admins também
+      if (shop.adminName || shop.adminEmail || shop.adminPhoto) {
+         // Tenta encontrar o admin dessa unidade
+         const currentAdmin = unitAdmins.find(a => a.barbershopId === shop.id);
+         if (currentAdmin) {
+            const updatedAdmin = {
+               ...currentAdmin,
+               name: shop.adminName || currentAdmin.name,
+               email: shop.adminEmail || currentAdmin.email,
+               urlfoto: shop.adminPhoto || currentAdmin.urlfoto
+            };
+            await saveToSheet(MASTER_SHEET_URL, 'AdministradoresUnidades', [updatedAdmin], 'update');
+         }
+      }
     }
+    await syncMasterData();
   };
 
-  const syncWithGoogleSheets = async (url: string) => {
-    if (!url || !url.includes('/exec')) return;
-    const currentShopId = selectedBarbershop?.id;
-    if (!currentShopId) return;
-
-    setIsAutoSyncing(true);
-    try {
-        const staffRaw = await fetchSheetData(url, 'Funcionarios');
-        let staffList: User[] = [];
-        if (staffRaw && Array.isArray(staffRaw)) {
-            staffList = staffRaw.map((u, i) => ({
-                id: String(findValue(u, 'id') || `u-${i}`).trim(),
-                barbershopId: currentShopId,
-                name: String(findValue(u, 'name') || 'Sem Nome'),
-                nickname: String(findValue(u, 'nickname') || ''),
-                email: String(findValue(u, 'email') || ''),
-                position: String(findValue(u, 'position') || 'Barbeiro'),
-                role: (findValue(u, 'role') as Role) || Role.BARBER,
-                useSchedule: String(findValue(u, 'useSchedule')).toLowerCase() === 'true',
-                startTime: parseTime(findValue(u, 'startTime')),
-                endTime: parseTime(findValue(u, 'endTime')),
-                workDays: String(findValue(u, 'workDays') || '1,2,3,4,5,6').split(',').map(Number),
-                photo: String(findValue(u, 'photo') || findValue(u, 'avatar') || '')
-            }));
-            setUsers(prev => [...prev.filter(u => u.barbershopId !== currentShopId), ...staffList]);
-        }
-
-        const servicesRaw = await fetchSheetData(url, 'Servicos');
-        if (servicesRaw && Array.isArray(servicesRaw)) {
-            const syncedServices = servicesRaw.map((s, i) => ({
-                id: String(findValue(s, 'id') || `s-${i}`).trim(),
-                barbershopId: currentShopId,
-                name: String(findValue(s, 'name') || 'Serviço'),
-                durationMinutes: Number(findValue(s, 'durationMinutes') || 30),
-                price: Number(String(findValue(s, 'price') || 0).replace(',', '.'))
-            }));
-            setServices(prev => [...prev.filter(s => s.barbershopId !== currentShopId), ...syncedServices]);
-        }
-
-        const clientsRaw = await fetchSheetData(url, 'Clientes');
-        if (clientsRaw && Array.isArray(clientsRaw)) {
-            const syncedClients = clientsRaw.map((c, i) => ({
-                id: String(findValue(c, 'id') || `c-${i}`).trim(),
-                barbershopId: currentShopId,
-                name: String(findValue(c, 'name') || 'Cliente'),
-                phone: String(findValue(c, 'phone') || ''),
-                email: String(findValue(c, 'email') || ''),
-                photo: String(findValue(c, 'photo') || findValue(c, 'avatar') || '')
-            }));
-            setClients(prev => [...prev.filter(c => c.barbershopId !== currentShopId), ...syncedClients]);
-        }
-
-        const appointmentsRaw = await fetchSheetData(url, 'Agendamentos');
-        if (appointmentsRaw && Array.isArray(appointmentsRaw)) {
-            const syncedApts = appointmentsRaw.map((a, i) => ({
-                id: String(findValue(a, 'id') || `a-${i}`).trim(),
-                barbershopId: currentShopId,
-                barberId: String(findValue(a, 'barberId') || '').trim(),
-                clientId: String(findValue(a, 'clientId') || '').trim(),
-                serviceId: String(findValue(a, 'serviceId') || '').trim(),
-                date: normalizeDateSync(findValue(a, 'date')),
-                time: parseTime(findValue(a, 'time')),
-                status: (findValue(a, 'status') as Appointment['status']) || 'PENDING'
-            }));
-            setAppointments(prev => [...prev.filter(a => a.barbershopId !== currentShopId), ...syncedApts]);
-        }
-    } catch (err) { 
-        console.error("Erro na sincronização Sheets:", err);
-    } finally {
-        setTimeout(() => setIsAutoSyncing(false), 2000);
+  const updateUnitAdmin = async (admin: any) => {
+    if (MASTER_SHEET_URL) {
+      await saveToSheet(MASTER_SHEET_URL, 'AdministradoresUnidades', [admin], 'update');
+      await syncMasterData();
     }
   };
 
   const addUser = async (user: User) => {
     setUsers(prev => [...prev, user]);
-    if (selectedBarbershop?.googleSheetsUrl) await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Funcionarios', [user.id, user.barbershopId, user.name, user.nickname || '', user.email, user.position || 'Barbeiro', user.role, String(user.useSchedule), user.startTime, user.endTime, (user.workDays || []).join(','), user.photo || ''], 'insert');
+    if (selectedBarbershop?.googleSheetsUrl) {
+      await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Funcionarios', [user], 'insert');
+    }
   };
 
   const updateUser = async (user: User) => {
     setUsers(prev => prev.map(u => u.id === user.id ? user : u));
-    if (selectedBarbershop?.googleSheetsUrl) await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Funcionarios', [user.id, user.barbershopId, user.name, user.nickname || '', user.email, user.position || 'Barbeiro', user.role, String(user.useSchedule), user.startTime, user.endTime, (user.workDays || []).join(','), user.photo || ''], 'update');
+    if (selectedBarbershop?.googleSheetsUrl) {
+      await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Funcionarios', [user], 'update');
+    }
+    
+    // Se for um administrador de unidade, atualiza também na planilha mestre
+    const admin = unitAdmins.find(a => a.id === user.id || a.email === user.email);
+    if (admin && MASTER_SHEET_URL) {
+      const updatedMasterAdmin = {
+        ...admin,
+        name: user.name,
+        email: user.email,
+        urlfoto: user.photo
+      };
+      await saveToSheet(MASTER_SHEET_URL, 'AdministradoresUnidades', [updatedMasterAdmin], 'update');
+    }
   };
 
   const deleteUser = async (id: string) => {
     setUsers(prev => prev.filter(u => u.id !== id));
-    if (selectedBarbershop?.googleSheetsUrl) await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Funcionarios', [id], 'delete');
+    if (selectedBarbershop?.googleSheetsUrl) {
+      await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Funcionarios', [{ id }], 'delete');
+    }
   };
 
   const addService = async (service: Omit<Service, 'id'>) => {
-    const newId = `ser-${Date.now()}`;
-    setServices(prev => [...prev, { id: newId, ...service }]);
-    if (selectedBarbershop?.googleSheetsUrl) await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Servicos', [newId, service.barbershopId, service.name, Number(service.durationMinutes), Number(service.price)], 'insert');
+    const newService = { ...service, id: `s-${Date.now()}` } as Service;
+    setServices(prev => [...prev, newService]);
+    if (selectedBarbershop?.googleSheetsUrl) {
+      await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Servicos', [newService], 'insert');
+    }
   };
 
-  const updateService = async (s: Service) => {
-    setServices(prev => prev.map(item => item.id === s.id ? s : item));
-    if (selectedBarbershop?.googleSheetsUrl) await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Servicos', [s.id, s.barbershopId, s.name, Number(s.durationMinutes), Number(s.price)], 'update');
+  const updateService = async (service: Service) => {
+    setServices(prev => prev.map(s => s.id === service.id ? service : s));
+    if (selectedBarbershop?.googleSheetsUrl) {
+      await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Servicos', [service], 'update');
+    }
   };
 
   const deleteService = async (id: string) => {
     setServices(prev => prev.filter(s => s.id !== id));
-    if (selectedBarbershop?.googleSheetsUrl) await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Servicos', [id], 'delete');
+    if (selectedBarbershop?.googleSheetsUrl) {
+      await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Servicos', [{ id }], 'delete');
+    }
   };
 
   const addAppointment = async (apt: Omit<Appointment, 'id'>) => {
-    const newId = `apt-${Date.now()}`;
-    setAppointments(prev => [...prev, { id: newId, ...apt }]);
-    if (selectedBarbershop?.googleSheetsUrl) await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Agendamentos', [newId, apt.barbershopId, apt.barberId, apt.clientId, apt.serviceId, apt.date, apt.time, apt.status], 'insert');
+    const newApt = { ...apt, id: `apt-${Date.now()}` } as Appointment;
+    setAppointments(prev => [...prev, newApt]);
+    if (selectedBarbershop?.googleSheetsUrl) {
+      await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Agendamentos', [newApt], 'insert');
+    }
   };
 
-  const deleteAppointment = async (id: string) => {
-    setAppointments(prev => prev.filter(a => a.id !== id));
-    if (selectedBarbershop?.googleSheetsUrl) await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Agendamentos', [id], 'delete');
+  const updateAppointmentStatus = async (id: string, status: Appointment['status']) => {
+    setAppointments(prev => prev.map(a => a.id === id ? { ...a, status } : a));
+    const apt = appointments.find(a => a.id === id);
+    if (apt && selectedBarbershop?.googleSheetsUrl) {
+      await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Agendamentos', [{ ...apt, status }], 'update');
+    }
   };
 
   const addClient = async (client: Omit<Client, 'id'>) => {
-    const newId = `cli-${Date.now()}`;
-    setClients(prev => [...prev, { id: newId, ...client }]);
+    const newClient = { ...client, id: `c-${Date.now()}` } as Client;
+    setClients(prev => [...prev, newClient]);
     if (selectedBarbershop?.googleSheetsUrl) {
-      await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Clientes', [newId, client.barbershopId, client.name, client.phone, client.email || '', client.photo || ''], 'insert');
+      await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Clientes', [newClient], 'insert');
     }
   };
 
   const updateClient = async (client: Client) => {
     setClients(prev => prev.map(c => c.id === client.id ? client : c));
     if (selectedBarbershop?.googleSheetsUrl) {
-      await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Clientes', [client.id, client.barbershopId, client.name, client.phone, client.email || '', client.photo || ''], 'update');
+      await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Clientes', [client], 'update');
     }
   };
 
   const deleteClient = async (id: string) => {
     setClients(prev => prev.filter(c => c.id !== id));
     if (selectedBarbershop?.googleSheetsUrl) {
-      await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Clientes', [id], 'delete');
+      await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Clientes', [{ id }], 'delete');
     }
   };
 
   return (
     <AppContext.Provider value={{
       currentUser, selectedBarbershop, setSelectedBarbershop, loading, isAutoSyncing,
-      loginError, setLoginError, login, logout: () => { setCurrentUser(null); setView('MARKETING'); }, view, setView,
-      barbershops, addBarbershop, updateBarbershop, updateBarbershopConfig: async () => {},
-      users, addUser, updateUser, deleteUser, 
+      loginError, setLoginError, login, logout: () => { setCurrentUser(null); setView('MARKETING'); },
+      view, setView, barbershops, payments, unitAdmins, 
+      networkTotalRevenue, networkTotalAppointments,
+      addBarbershop, updateBarbershop, updateUnitAdmin, syncMasterData, calculateNetworkMetrics,
+      updateBarbershopConfig: async () => {}, syncWithGoogleSheets,
+      users, addUser, updateUser, deleteUser,
       services, addService, updateService, deleteService,
-      appointments, addAppointment, deleteAppointment, updateAppointmentStatus: async (id, s) => setAppointments(prev => prev.map(a => a.id === id ? {...a, status: s} : a)),
-      clients, addClient, updateClient, deleteClient, 
-      payments: [], syncWithGoogleSheets, masterUrl, setMasterUrl
+      appointments, addAppointment, deleteAppointment: async (id) => {
+          setAppointments(prev => prev.filter(a => a.id !== id));
+          if (selectedBarbershop?.googleSheetsUrl) {
+              await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Agendamentos', [{id}], 'delete');
+          }
+      }, updateAppointmentStatus,
+      clients, addClient, updateClient, deleteClient
     }}>
       {children}
     </AppContext.Provider>

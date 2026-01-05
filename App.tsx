@@ -36,15 +36,18 @@ const MainContent = () => {
 
   if (loading) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-white text-gray-900">
-        <div className="w-64 h-32 mb-8 animate-pulse flex items-center justify-center">
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-black text-white">
+        <div className="w-96 h-48 mb-8 animate-pulse flex items-center justify-center">
            <img src={LOGO_URL} alt="Barber Pro Manager" className="w-full h-full object-contain" />
         </div>
-        <Loader2 size={32} className="animate-spin mb-4 text-blue-600" />
-        <div className="flex flex-col items-center gap-1">
-           <p className="font-black uppercase tracking-[0.3em] text-[10px] text-gray-400">Barber Pro Manager</p>
-           <p className="font-bold text-gray-900 text-xs">Sincronizando infraestrutura...</p>
+        <Loader2 size={32} className="animate-spin mb-6 text-blue-500" />
+        <div className="flex flex-col items-center gap-1.5">
+           <p className="font-black uppercase tracking-[0.4em] text-[10px] text-zinc-600">Barber Pro Manager</p>
+           <p className="font-bold text-zinc-300 text-xs tracking-wide">Sincronizando infraestrutura...</p>
         </div>
+        {/* Decorative elements to match the UI style */}
+        <div className="fixed bottom-10 left-10 w-64 h-64 bg-blue-600/5 rounded-full blur-[100px] -z-10"></div>
+        <div className="fixed top-10 right-10 w-64 h-64 bg-indigo-600/5 rounded-full blur-[100px] -z-10"></div>
       </div>
     );
   }

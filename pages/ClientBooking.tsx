@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { User, Service, Client, Appointment } from '../types';
 import { LOGO_URL } from '../constants';
 import { uploadImageToImgBB } from '../services/imageService';
+import { sanitizeTime } from './Schedule';
 import { 
   Phone, 
   User as UserIcon, 
@@ -25,24 +26,44 @@ import {
   Info,
   Copy,
   MessageCircle,
-  QrCode
+  QrCode,
+  Link as LinkIcon,
+  Smartphone,
+  Sparkles,
+  ArrowRight,
+  Download,
+  ExternalLink,
+  MapPin,
+  Star,
+  DollarSign,
+  X
 } from 'lucide-react';
+import QRCodeLib from 'qrcode';
 
 interface ClientBookingProps {
   isPublic?: boolean;
 }
 
 export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }) => {
-  const { selectedBarbershop, users, services, appointments, clients, addAppointment, addClient, setView, syncWithGoogleSheets, currentUser } = useApp();
+  const { 
+    selectedBarbershop, users, services, appointments, 
+    clients, addAppointment, addClient, setView, 
+    syncWithGoogleSheets, currentUser 
+  } = useApp();
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  const [step, setStep] = useState(1);
+  // Estados do Fluxo
+  const [step, setStep] = useState<'phone' | 'register' | 'barber' | 'service' | 'datetime' | 'confirm' | 'success'>(isPublic ? 'phone' : 'phone');
   const [isSyncing, setIsSyncing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date());
-  const [showServiceWarning, setShowServiceWarning] = useState(false);
-  const [copySuccess, setCopySuccess] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
+  const [error, setError] = useState('');
 
+  // Estados de Seleção
   const [formData, setFormData] = useState({
     phone: '',
     name: '',
@@ -55,32 +76,8 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
   });
 
   const [foundClient, setFoundClient] = useState<Client | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
 
-  // Geração do Link de Compartilhamento
-  const bookingUrl = useMemo(() => {
-    if (!selectedBarbershop) return '';
-    const base = window.location.origin + window.location.pathname;
-    return `${base}?shop=${selectedBarbershop.id}`;
-  }, [selectedBarbershop]);
-
-  const qrCodeUrl = useMemo(() => {
-    return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(bookingUrl)}`;
-  }, [bookingUrl]);
-
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(bookingUrl);
-    setCopySuccess(true);
-    setTimeout(() => setCopySuccess(false), 2000);
-  };
-
-  const handleShareWhatsApp = () => {
-    const text = encodeURIComponent(`Olá! Agende seu horário na ${selectedBarbershop?.name} clicando no link abaixo:\n\n${bookingUrl}`);
-    window.open(`https://wa.me/?text=${text}`, '_blank');
-  };
-
-  // Sincroniza dados da planilha assim que a página abre
+  // Sincronização inicial
   useEffect(() => {
     const initSync = async () => {
       if (selectedBarbershop?.googleSheetsUrl) {
@@ -88,7 +85,7 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
         try {
           await syncWithGoogleSheets(selectedBarbershop.googleSheetsUrl);
         } catch (e) {
-          console.error("Falha ao sincronizar agenda do cliente:", e);
+          console.error("Falha ao sincronizar agenda:", e);
         } finally {
           setIsSyncing(false);
         }
@@ -97,6 +94,25 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
     initSync();
   }, [selectedBarbershop?.googleSheetsUrl]);
 
+  // QR Code e Links (Admin View)
+  const bookingUrl = useMemo(() => {
+    if (!selectedBarbershop) return '';
+    return `${window.location.origin}?shop=${selectedBarbershop.id}`;
+  }, [selectedBarbershop]);
+
+  useEffect(() => {
+    if (!isPublic && qrCanvasRef.current && bookingUrl) {
+      QRCodeLib.toCanvas(qrCanvasRef.current, bookingUrl, {
+        width: 300,
+        margin: 2,
+        color: { dark: '#1e293b', light: '#ffffff' },
+      }).then(() => {
+        if (qrCanvasRef.current) setQrCodeUrl(qrCanvasRef.current.toDataURL('image/png'));
+      });
+    }
+  }, [isPublic, bookingUrl]);
+
+  // Filtros de Dados
   const shopBarbers = useMemo(() => 
     users.filter(u => String(u.barbershopId).trim() === String(selectedBarbershop?.id).trim() && u.useSchedule),
     [users, selectedBarbershop]
@@ -107,123 +123,106 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
     [services, selectedBarbershop]
   );
 
-  const shopClients = useMemo(() => 
-    clients.filter(c => String(c.barbershopId).trim() === String(selectedBarbershop?.id).trim()),
-    [clients, selectedBarbershop]
-  );
+  const selectedBarber = useMemo(() => shopBarbers.find(b => b.id === formData.barberId), [formData.barberId, shopBarbers]);
+  const selectedService = useMemo(() => shopServices.find(s => s.id === formData.serviceId), [formData.serviceId, shopServices]);
 
-  const selectedBarber = useMemo(() => 
-    shopBarbers.find(b => b.id === formData.barberId),
-    [formData.barberId, shopBarbers]
-  );
-
-  const selectedService = useMemo(() => 
-    shopServices.find(s => s.id === formData.serviceId),
-    [formData.serviceId, shopServices]
-  );
-
-  const formatDisplayDate = (dateStr: string) => {
-    if (!dateStr) return '';
-    return dateStr.split('-').reverse().join('/');
+  // Helpers
+  const applyPhoneMask = (value: string) => {
+    const raw = value.replace(/\D/g, '').slice(0, 11);
+    if (raw.length <= 2) return raw;
+    if (raw.length <= 7) return `(${raw.slice(0, 2)}) ${raw.slice(2)}`;
+    return `(${raw.slice(0, 2)}) ${raw.slice(2, 7)}-${raw.slice(7)}`;
   };
 
+  const getNextDays = (count: number) => {
+    const days = [];
+    const today = new Date();
+    for (let i = 0; i < count; i++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() + i);
+      days.push(date);
+    }
+    return days;
+  };
+
+  const formatDisplayDate = (dateStr: string) => dateStr.split('-').reverse().join('/');
+  const getDayName = (date: Date) => date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
+
+  // Logica de Busca de Cliente
+  const searchClientByPhone = () => {
+    const tel = formData.phone.replace(/\D/g, "");
+    if (tel.length < 11) {
+      setError('Digite um WhatsApp válido.');
+      return;
+    }
+    setError('');
+    const c = clients.find(x => x.phone.replace(/\D/g, "") === tel);
+    if (c) {
+      setFoundClient(c);
+      setFormData(prev => ({ ...prev, name: c.name, email: c.email || '', photo: c.photo || '' }));
+      setStep('barber');
+    } else {
+      setFoundClient(null);
+      setStep('register');
+    }
+  };
+
+  // Upload de Foto
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setIsUploading(true);
     try {
       const url = await uploadImageToImgBB(file);
-      if (url) {
-        setFormData(prev => ({ ...prev, photo: url }));
-      } else {
-        alert("Erro no upload da imagem.");
-      }
-    } catch (err) {
-      alert("Erro ao enviar imagem.");
+      if (url) setFormData(prev => ({ ...prev, photo: url }));
     } finally {
       setIsUploading(false);
     }
   };
 
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let v = e.target.value.replace(/\D/g, "").slice(0, 11);
-    if (v.length >= 11) v = v.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
-    else if (v.length >= 7) v = v.replace(/(\d{2})(\d{4})(\d+)/, "($1) $2-$3");
-    else if (v.length >= 3) v = v.replace(/(\d{2})(\d+)/, "($1) $2");
-    setFormData({ ...formData, phone: v, name: foundClient ? formData.name : '', email: foundClient ? formData.email : '', photo: foundClient ? (foundClient.photo || '') : '' });
-    if (v.length < 14) {
-        setHasSearched(false);
-        setFoundClient(null);
-    }
-  };
-
-  useEffect(() => {
-    const tel = formData.phone.replace(/\D/g, "");
-    if (tel.length === 11) {
-      const c = shopClients.find(x => x.phone.replace(/\D/g, "") === tel);
-      setHasSearched(true);
-      if (c) {
-        setFoundClient(c);
-        setFormData(prev => ({ ...prev, name: c.name, email: c.email || '', photo: c.photo || '' }));
-      } else {
-        setFoundClient(null);
-        setFormData(prev => ({ ...prev, name: '', email: '', photo: '' }));
-      }
-    }
-  }, [formData.phone, shopClients]);
-
-  const timeSlots = useMemo(() => {
+  // Horários Disponíveis
+  const availableSlots = useMemo(() => {
     if (!selectedBarber || !formData.date || !selectedService) return [];
     
     const [year, month, day] = formData.date.split('-').map(Number);
     const selectedDateObj = new Date(year, month - 1, day);
     const dayOfWeek = selectedDateObj.getDay();
 
-    if (selectedBarber.workDays && !selectedBarber.workDays.includes(dayOfWeek)) {
-      return [];
-    }
-
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const isToday = formData.date === todayStr;
-    const currentTotalMinutes = now.getHours() * 60 + now.getMinutes();
+    if (selectedBarber.workDays && !selectedBarber.workDays.includes(dayOfWeek)) return [];
 
     const slots = [];
-    const durt = selectedService.durationMinutes;
-    
-    const extrairMin = (v: string) => {
-      if (!v) return 0;
-      const [h, m] = v.split(':').map(Number);
+    const duration = selectedService.durationMinutes;
+    const now = new Date();
+    const isToday = formData.date === now.toLocaleDateString('en-CA');
+    const currentTotalMinutes = now.getHours() * 60 + now.getMinutes();
+
+    const parseTime = (t: string) => {
+      const clean = sanitizeTime(t);
+      const [h, m] = clean.split(':').map(Number);
       return (h || 0) * 60 + (m || 0);
     };
 
-    const ini = extrairMin(selectedBarber.startTime || '09:00');
-    const fim = extrairMin(selectedBarber.endTime || '19:00');
+    const startMin = parseTime(selectedBarber.startTime || '09:00');
+    const endMin = parseTime(selectedBarber.endTime || '19:00');
 
-    for (let m = ini; m + durt <= fim; m += 30) {
-      const hora = `${Math.floor(m / 60).toString().padStart(2, '0')}:${(m % 60).toString().padStart(2, '0')}`;
+    for (let m = startMin; m + duration <= endMin; m += 30) {
+      const timeStr = `${Math.floor(m / 60).toString().padStart(2, '0')}:${(m % 60).toString().padStart(2, '0')}`;
       const isPast = isToday && (m < currentTotalMinutes);
-      const conflito = appointments.some(a => 
+      const isBooked = appointments.some(a => 
         String(a.barberId).trim() === String(selectedBarber.id).trim() && 
         a.date === formData.date && 
-        a.time === hora &&
+        sanitizeTime(a.time) === timeStr &&
         a.status !== 'CANCELLED'
       );
 
-      slots.push({ 
-        time: hora, 
-        available: !conflito && !isPast,
-        isPast: isPast,
-        isConflito: conflito
-      });
+      slots.push({ time: timeStr, available: !isBooked && !isPast });
     }
     return slots;
   }, [selectedBarber, formData.date, selectedService, appointments]);
 
-  const handleConfirmBooking = async () => {
+  // Finalização
+  const handleFinalSubmit = async () => {
     if (!selectedBarbershop || !formData.time || !formData.barberId || !formData.serviceId) return;
-
     setIsSaving(true);
     try {
       let clientId = foundClient?.id;
@@ -238,7 +237,6 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
         });
         clientId = newId;
       }
-
       if (clientId) {
         await addAppointment({
           barbershopId: selectedBarbershop.id,
@@ -249,399 +247,323 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
           time: formData.time,
           status: 'PENDING'
         });
-        setStep(3);
+        setStep('success');
       }
     } catch (err) {
-      alert("Erro ao realizar agendamento.");
+      setError("Erro ao processar agendamento.");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const daysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
-  const firstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
-
-  const calendarDays = useMemo(() => {
-    const year = currentCalendarDate.getFullYear();
-    const month = currentCalendarDate.getMonth();
-    const totalDays = daysInMonth(year, month);
-    const startDay = firstDayOfMonth(year, month);
-    const days = [];
-
-    for (let i = 0; i < startDay; i++) days.push(null);
-
-    for (let d = 1; d <= totalDays; d++) {
-      const dateStr = `${year}-${(month + 1).toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
-      const todayStr = new Date().toLocaleDateString('en-CA');
-      const isPast = dateStr < todayStr;
-      
-      let worksOnThisDay = true;
-      if (selectedBarber && selectedBarber.workDays) {
-        const dateObj = new Date(year, month, d);
-        worksOnThisDay = selectedBarber.workDays.includes(dateObj.getDay());
-      }
-
-      days.push({
-        day: d,
-        dateStr,
-        isPast,
-        isAvailable: !isPast && worksOnThisDay
-      });
-    }
-    return days;
-  }, [currentCalendarDate, selectedBarber]);
-
-  const changeMonth = (offset: number) => {
-    const newDate = new Date(currentCalendarDate);
-    newDate.setMonth(newDate.getMonth() + offset);
-    setCurrentCalendarDate(newDate);
-  };
-
-  const handleDateClick = (dateStr: string) => {
-    if (!formData.serviceId) {
-      setShowServiceWarning(true);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      setTimeout(() => setShowServiceWarning(false), 3000);
-      return;
-    }
-    setFormData({...formData, date: dateStr, time: ''});
-  };
-
-  return (
-    <div className="min-h-full bg-gray-50 flex flex-col items-center py-8 px-4 font-sans">
-      <div className="w-full max-w-xl space-y-6">
-        
-        {/* Painel de Compartilhamento (Apenas para Admin Logado) */}
-        {!isPublic && currentUser && (
-          <div className="bg-white p-6 rounded-3xl border border-indigo-100 shadow-xl shadow-indigo-100/20 space-y-4 animate-in slide-in-from-top-4 duration-500">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg">
-                <Share2 size={20} />
+  // Render Admin View
+  if (!isPublic && currentUser) {
+    return (
+      <div className="space-y-6 animate-slide-up">
+        {/* Banner Admin */}
+        <div className="bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600 rounded-[2.5rem] shadow-2xl p-10 text-white relative overflow-hidden">
+          <div className="absolute inset-0 bg-black/10"></div>
+          <div className="relative z-10">
+            <div className="flex flex-col md:flex-row items-center gap-6 mb-10">
+              <div className="w-20 h-20 bg-white/20 backdrop-blur-xl rounded-[1.5rem] flex items-center justify-center shadow-2xl border border-white/30">
+                <LinkIcon className="w-10 h-10" />
               </div>
-              <div>
-                <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest">Divulgue seu Agendamento</h3>
-                <p className="text-[10px] text-gray-500 font-bold uppercase">Envie para seus clientes pelo WhatsApp ou use o QR Code</p>
+              <div className="text-center md:text-left">
+                <h1 className="text-4xl font-black tracking-tighter">Link Agenda Online</h1>
+                <p className="text-blue-100 font-bold text-lg mt-1">Sua vitrine digital de agendamentos automáticos</p>
               </div>
             </div>
-
-            <div className="flex flex-col sm:flex-row gap-4">
-              {/* QR Code */}
-              <div className="flex flex-col items-center gap-2 p-3 bg-gray-50 rounded-2xl border border-gray-100 shrink-0">
-                <img src={qrCodeUrl} alt="QR Code" className="w-24 h-24 rounded-lg shadow-sm" />
-                <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">QR Code da Unidade</span>
-              </div>
-
-              {/* Ações de Link */}
-              <div className="flex-1 space-y-3 flex flex-col justify-center">
-                <div className="relative group">
-                  <input 
-                    readOnly 
-                    value={bookingUrl} 
-                    className="w-full bg-gray-100 border-2 border-gray-50 p-3 pr-24 rounded-xl text-[10px] font-mono font-bold text-gray-600 outline-none" 
-                  />
-                  <button 
-                    onClick={handleCopyLink}
-                    className={`absolute right-1.5 top-1.5 px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
-                      copySuccess ? 'bg-green-50 text-white' : 'bg-indigo-600 text-white hover:bg-black'
-                    }`}
-                  >
-                    {copySuccess ? 'Copiado!' : 'Copiar'}
-                  </button>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-2">
-                  <button 
-                    onClick={handleShareWhatsApp}
-                    className="flex items-center justify-center gap-2 py-3 bg-[#25D366] text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-green-100 hover:scale-[1.02] transition-all"
-                  >
-                    <MessageCircle size={14} /> WhatsApp
-                  </button>
-                  <button 
-                    onClick={() => setView('DASHBOARD')}
-                    className="flex items-center justify-center gap-2 py-3 bg-zinc-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all"
-                  >
-                    <ArrowLeft size={14} /> Voltar
-                  </button>
-                </div>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white/10 backdrop-blur-md rounded-3xl p-6 border border-white/20"><p className="text-sm font-black uppercase mb-1">Zero Fricção</p><p className="text-xs text-blue-100">Clientes agendam sem criar conta.</p></div>
+              <div className="bg-white/10 backdrop-blur-md rounded-3xl p-6 border border-white/20"><p className="text-sm font-black uppercase mb-1">24/7</p><p className="text-xs text-blue-100">Agenda aberta o tempo todo.</p></div>
+              <div className="bg-white/10 backdrop-blur-md rounded-3xl p-6 border border-white/20"><p className="text-sm font-black uppercase mb-1">Mobile</p><p className="text-xs text-blue-100">Otimizado para celulares.</p></div>
             </div>
-          </div>
-        )}
-
-        {/* Card Agendamento */}
-        <div className="bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-gray-100 animate-page-fade">
-          <header className="bg-zinc-900 p-8 text-center relative overflow-hidden">
-             <div className="absolute top-0 left-0 w-full h-full opacity-10">
-                <Scissors size={200} className="absolute -right-10 -top-10 rotate-12" />
-             </div>
-             <div className="relative z-10 flex flex-col items-center gap-4">
-                <div className="w-20 h-20 rounded-[1.5rem] bg-white p-1 shadow-2xl overflow-hidden">
-                   <img src={selectedBarbershop?.logo || LOGO_URL} className="w-full h-full object-cover rounded-[1.2rem]" />
-                </div>
-                <div>
-                   <h2 className="text-white font-black text-2xl tracking-tight">{selectedBarbershop?.name}</h2>
-                   <p className="text-gray-400 text-xs font-bold uppercase tracking-[0.2em] mt-1">Sua nova experiência começa aqui</p>
-                </div>
-             </div>
-          </header>
-
-          <div className="p-8">
-            {step === 1 && (
-              <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                 <div className="space-y-6">
-                    <h3 className="text-lg font-black text-gray-800 flex items-center gap-2"><Search size={18} className="text-indigo-600" /> Identificação</h3>
-                    
-                    <div>
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Seu WhatsApp</label>
-                      <input 
-                        type="tel" 
-                        className="w-full border-2 border-gray-50 bg-gray-50 p-4 rounded-2xl text-xl font-black outline-none focus:border-indigo-500 focus:bg-white transition-all text-black placeholder:text-gray-200" 
-                        placeholder="(00) 00000-0000" 
-                        value={formData.phone} 
-                        onChange={handlePhoneChange} 
-                      />
-                    </div>
-
-                    {hasSearched && (
-                        <div className="animate-in fade-in slide-in-from-top-4 duration-300">
-                            {foundClient ? (
-                                <div className="p-6 bg-green-50 border-2 border-green-200 rounded-[2rem] flex items-center gap-4">
-                                    <div className="w-16 h-16 rounded-[1.2rem] overflow-hidden border-2 border-white shadow-md">
-                                        {foundClient.photo ? <img src={foundClient.photo} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-green-500 text-white flex items-center justify-center text-lg font-black">{foundClient.name.charAt(0)}</div>}
-                                    </div>
-                                    <div>
-                                        <p className="text-xs font-black text-green-800 uppercase tracking-widest">Cadastro Localizado</p>
-                                        <p className="text-lg font-black text-green-900">Olá, {foundClient.name}!</p>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="space-y-6">
-                                    <div className="p-6 bg-amber-50 border-2 border-amber-200 rounded-[2rem] flex items-center gap-4">
-                                        <div className="w-12 h-12 bg-amber-500 text-white rounded-full flex items-center justify-center shrink-0 shadow-lg shadow-amber-100">
-                                            <AlertCircle size={24} />
-                                        </div>
-                                        <div>
-                                            <p className="text-xs font-black text-amber-800 uppercase tracking-widest">Cadastro não localizado</p>
-                                            <p className="text-sm font-bold text-amber-900">Preencha seus dados para continuar o agendamento.</p>
-                                        </div>
-                                    </div>
-
-                                    {/* Upload de Foto para Novo Cliente */}
-                                    <div className="flex flex-col items-center">
-                                        <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-                                            {formData.photo ? (
-                                                <img src={formData.photo} className="w-20 h-20 rounded-[1.2rem] object-cover border-4 border-indigo-100 shadow-lg" />
-                                            ) : (
-                                                <div className="w-20 h-20 rounded-[1.2rem] bg-indigo-50 flex items-center justify-center text-indigo-200 border-4 border-dashed border-indigo-100">
-                                                    {isUploading ? <Loader2 className="animate-spin" size={24} /> : <Camera size={24} />}
-                                                </div>
-                                            )}
-                                            <div className="absolute -bottom-1 -right-1 bg-white p-1.5 rounded-full shadow-md border border-gray-100 text-indigo-600">
-                                                <Upload size={12} />
-                                            </div>
-                                            <input 
-                                                type="file" 
-                                                ref={fileInputRef} 
-                                                className="hidden" 
-                                                accept="image/*" 
-                                                onChange={handleFileUpload} 
-                                            />
-                                        </div>
-                                        <span className="text-[9px] font-black text-gray-400 uppercase mt-2">Sua Foto (Opcional)</span>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Nome Completo</label>
-                                            <input type="text" className="w-full border-2 border-gray-50 bg-gray-50 p-4 rounded-2xl text-sm font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-black" placeholder="Como devemos te chamar?" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">E-mail (Opcional)</label>
-                                            <input type="email" className="w-full border-2 border-gray-50 bg-gray-50 p-4 rounded-2xl text-sm font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all text-black" placeholder="seu@email.com" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                 </div>
-
-                 {hasSearched && (
-                 <div className="space-y-4">
-                    <h3 className="text-lg font-black text-gray-800 flex items-center gap-2"><UserIcon size={18} className="text-indigo-600" /> Profissional</h3>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                       {shopBarbers.map(barber => (
-                          <button key={barber.id} onClick={() => setFormData({...formData, barberId: barber.id, time: ''})} className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${formData.barberId === barber.id ? 'border-indigo-600 bg-indigo-50 shadow-lg' : 'border-gray-50 bg-gray-50 hover:border-gray-200'}`}>
-                             <div className="w-14 h-14 rounded-2xl overflow-hidden border-2 border-white shadow-md">
-                                {barber.photo ? <img src={barber.photo} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-indigo-200 flex items-center justify-center text-indigo-600 font-black">{barber.name.charAt(0)}</div>}
-                             </div>
-                             <span className={`text-[10px] font-black uppercase tracking-tight text-center ${formData.barberId === barber.id ? 'text-indigo-700' : 'text-gray-500'}`}>{barber.nickname || barber.name}</span>
-                          </button>
-                       ))}
-                    </div>
-                 </div>
-                 )}
-
-                 {hasSearched && (
-                    <button 
-                        disabled={!formData.phone || !formData.name || !formData.barberId || isUploading} 
-                        onClick={() => setStep(2)} 
-                        className={`w-full py-5 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl transition-all disabled:opacity-50 flex items-center justify-center gap-3 ${
-                            foundClient ? 'bg-zinc-900 hover:bg-black text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-100'
-                        }`}
-                    >
-                        {isUploading ? (
-                            <><Loader2 className="animate-spin" size={18} /> Enviando Foto...</>
-                        ) : foundClient ? (
-                            <>Próximo Passo <ChevronRight size={18} /></>
-                        ) : (
-                            <>Realizar Cadastro <UserPlus size={18} /></>
-                        )}
-                    </button>
-                 )}
-              </div>
-            )}
-
-            {step === 2 && (
-              <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
-                 <button onClick={() => setStep(1)} className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1 hover:text-indigo-600 transition-colors"><ArrowLeft size={14} /> Voltar</button>
-
-                 <div className="space-y-4">
-                    <h3 className="text-lg font-black text-gray-800 flex items-center gap-2"><Scissors size={18} className="text-indigo-600" /> Serviço</h3>
-                    
-                    {showServiceWarning && (
-                        <div className="bg-red-50 border border-red-200 p-4 rounded-2xl flex items-center gap-3 animate-bounce shadow-lg shadow-red-100/50">
-                            <AlertCircle className="text-red-500" size={20} />
-                            <p className="text-xs font-black text-red-700 uppercase tracking-widest">Selecione um serviço antes de escolher o dia!</p>
-                        </div>
-                    )}
-
-                    <div className="grid grid-cols-1 gap-3">
-                       {shopServices.map(service => (
-                          <button key={service.id} onClick={() => setFormData({...formData, serviceId: service.id, time: ''})} className={`p-4 rounded-2xl border-2 transition-all flex items-center justify-between ${formData.serviceId === service.id ? 'border-indigo-600 bg-indigo-50' : 'border-gray-50 bg-gray-50 hover:border-gray-200'}`}>
-                             <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-xl ${formData.serviceId === service.id ? 'bg-indigo-600 text-white' : 'bg-white text-gray-400'}`}><Scissors size={16} /></div>
-                                <div className="text-left">
-                                   <p className={`text-sm font-black ${formData.serviceId === service.id ? 'text-indigo-900' : 'text-gray-700'}`}>{service.name}</p>
-                                   <p className="text-[10px] text-gray-400 font-bold">{service.durationMinutes} min</p>
-                                </div>
-                             </div>
-                             <span className="text-sm font-black text-indigo-600">R$ {service.price.toFixed(2)}</span>
-                          </button>
-                       ))}
-                    </div>
-                 </div>
-
-                 <div className="space-y-4">
-                    <h3 className="text-lg font-black text-gray-800 flex items-center gap-2"><Calendar size={18} className="text-indigo-600" /> Data do Agendamento</h3>
-                    
-                    <div className={`bg-gray-50 rounded-3xl p-6 border transition-all ${!formData.serviceId ? 'opacity-60 cursor-not-allowed grayscale' : 'border-gray-100'}`}>
-                       <div className="flex items-center justify-between mb-6">
-                          <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-white rounded-xl text-gray-400 transition-all"><ChevronLeft size={20}/></button>
-                          <h4 className="font-black text-sm uppercase tracking-widest text-gray-800">
-                             {currentCalendarDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-                          </h4>
-                          <button onClick={() => changeMonth(1)} className="p-2 hover:bg-white rounded-xl text-gray-400 transition-all"><ChevronRight size={20}/></button>
-                       </div>
-
-                       <div className="grid grid-cols-7 gap-1 text-center mb-2">
-                          {['D','S','T','Q','Q','S','S'].map(d => <span key={d} className="text-[10px] font-black text-gray-400">{d}</span>)}
-                       </div>
-
-                       <div className="grid grid-cols-7 gap-1">
-                          {calendarDays.map((d, i) => d ? (
-                             <button
-                                key={i}
-                                disabled={!d.isAvailable}
-                                onClick={() => handleDateClick(d.dateStr)}
-                                className={`aspect-square rounded-xl flex items-center justify-center text-xs font-bold transition-all ${
-                                  formData.date === d.dateStr 
-                                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' 
-                                    : d.isAvailable 
-                                      ? 'bg-white text-gray-700 hover:border-indigo-400 border border-transparent' 
-                                      : 'bg-transparent text-gray-300 cursor-not-allowed'
-                                }`}
-                             >
-                                {d.day}
-                             </button>
-                          ) : <div key={i} className="aspect-square"></div>)}
-                       </div>
-                    </div>
-                 </div>
-
-                 <div className="space-y-4">
-                    <h3 className="text-lg font-black text-gray-800 flex items-center gap-2"><Clock size={18} className="text-indigo-600" /> Horários Disponíveis</h3>
-                    {!formData.serviceId ? (
-                         <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-[2rem] flex flex-col items-center gap-3 text-center animate-pulse">
-                            <Info className="text-indigo-500" size={28} />
-                            <p className="text-sm font-bold text-indigo-700 leading-tight">Selecione um serviço acima para ver os horários disponíveis.</p>
-                         </div>
-                    ) : timeSlots.length > 0 ? (
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                        {timeSlots.map(slot => (
-                          <button 
-                            key={slot.time}
-                            disabled={!slot.available}
-                            onClick={() => setFormData({...formData, time: slot.time})}
-                            className={`p-3 rounded-xl text-xs font-bold transition-all border-2 ${
-                              !slot.available 
-                                ? 'bg-gray-100 text-gray-300 border-gray-100 cursor-not-allowed opacity-40' 
-                                : formData.time === slot.time 
-                                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' 
-                                  : 'bg-white text-gray-700 border-gray-100 hover:border-indigo-200'
-                            }`}
-                          >
-                             {slot.time}
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                       <div className="bg-amber-50 border border-amber-100 p-4 rounded-2xl flex flex-col items-center gap-2 text-center">
-                          <AlertCircle className="text-amber-500" size={24} />
-                          <p className="text-xs font-bold text-amber-700">O profissional selecionado não atende nesta data ou não há horários livres.</p>
-                       </div>
-                    )}
-                 </div>
-
-                 <button disabled={!formData.time || isSaving} onClick={handleConfirmBooking} className="w-full bg-indigo-600 text-white py-5 rounded-2xl font-black text-sm uppercase tracking-widest shadow-2xl shadow-indigo-100 hover:bg-indigo-700 flex items-center justify-center gap-3">
-                    {isSaving ? <Loader2 className="animate-spin" /> : 'Confirmar Agendamento'}
-                 </button>
-              </div>
-            )}
-
-            {step === 3 && (
-              <div className="py-12 flex flex-col items-center text-center space-y-6 animate-in zoom-in duration-500">
-                 <div className="w-24 h-24 bg-green-500 text-white rounded-full flex items-center justify-center shadow-2xl"><CheckCircle2 size={48} /></div>
-                 <div>
-                    <h3 className="text-3xl font-black text-gray-900 tracking-tight">Tudo Pronto!</h3>
-                    <p className="text-gray-500 font-bold mt-2">Seu horário foi reservado com sucesso.</p>
-                 </div>
-                 <div className="bg-gray-50 p-6 rounded-3xl border border-gray-100 w-full space-y-3">
-                    <div className="flex justify-between text-xs font-bold">
-                       <span className="text-gray-400">PROFISSIONAL</span>
-                       <span className="text-gray-900">{selectedBarber?.nickname || selectedBarber?.name}</span>
-                    </div>
-                    <div className="flex justify-between text-xs font-bold">
-                       <span className="text-gray-400">SERVIÇO</span>
-                       <span className="text-gray-900">{selectedService?.name}</span>
-                    </div>
-                    <div className="flex justify-between text-xs font-bold">
-                       <span className="text-gray-400">DATA / HORA</span>
-                       <span className="text-gray-900">{formatDisplayDate(formData.date)} às {formData.time}</span>
-                    </div>
-                 </div>
-
-                 <button 
-                   onClick={() => setView('DASHBOARD')}
-                   className="w-full bg-zinc-900 text-white py-5 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-black transition-all flex items-center justify-center gap-3"
-                 >
-                   <Check size={20} /> Concluir
-                 </button>
-              </div>
-            )}
           </div>
         </div>
-        <p className="text-center text-[9px] text-gray-300 font-black uppercase tracking-[0.5em]">BarberPro SaaS Technology</p>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="bg-zinc-900 rounded-[2.5rem] p-10 border border-zinc-800">
+            <h2 className="text-2xl font-black text-white mb-6">URL da Unidade</h2>
+            <div className="bg-black/40 rounded-2xl p-6 border border-zinc-800 mb-6">
+                <code className="text-blue-400 text-sm break-all">{bookingUrl}</code>
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => { navigator.clipboard.writeText(bookingUrl); setCopied(true); setTimeout(()=>setCopied(false), 2000); }} className="flex-1 bg-blue-600 text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest">{copied ? 'Copiado!' : 'Copiar Link'}</button>
+              <button onClick={() => window.open(bookingUrl, '_blank')} className="flex-1 bg-zinc-800 text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest">Abrir Página</button>
+            </div>
+          </div>
+          <div className="bg-zinc-900 rounded-[2.5rem] p-10 border border-zinc-800 flex flex-col items-center">
+            <h2 className="text-2xl font-black text-white mb-6">QR Code</h2>
+            <div className="bg-white p-6 rounded-3xl mb-6"><canvas ref={qrCanvasRef}></canvas></div>
+            <button onClick={() => { const link = document.createElement('a'); link.download = 'qrcode.png'; link.href = qrCodeUrl; link.click(); }} className="w-full bg-purple-600 text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest">Baixar QR Code</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Render Public View
+  const stepIndicators = ['phone', 'barber', 'service', 'datetime'];
+  const currentStepIndex = stepIndicators.indexOf(step === 'register' ? 'phone' : step === 'confirm' ? 'datetime' : (step as any));
+
+  if (step === 'success') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 font-sans">
+        <div className="bg-white rounded-[3rem] shadow-2xl p-12 max-w-md w-full text-center animate-in zoom-in duration-500 border border-gray-100">
+           <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-8">
+              <CheckCircle2 size={48} className="text-green-600" />
+           </div>
+           <h2 className="text-3xl font-black text-gray-900 mb-2">Agendado!</h2>
+           <p className="text-gray-500 font-medium mb-8">Seu horário foi reservado com sucesso.</p>
+           
+           <div className="bg-gray-50 rounded-3xl p-6 text-left space-y-4 mb-10 border border-gray-100">
+              <div className="flex items-center gap-3"><Scissors className="text-gray-400" size={18}/><span className="font-bold text-gray-900">{selectedService?.name}</span></div>
+              <div className="flex items-center gap-3"><UserIcon className="text-gray-400" size={18}/><span className="font-bold text-gray-900">{selectedBarber?.name}</span></div>
+              <div className="flex items-center gap-3"><Calendar className="text-gray-400" size={18}/><span className="font-bold text-gray-900">{formatDisplayDate(formData.date)} às {formData.time}</span></div>
+           </div>
+
+           <button onClick={() => window.location.reload()} className="w-full bg-zinc-900 text-white py-5 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-black transition-all">Concluir</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-100 py-8 px-4 font-sans">
+      <div className="max-w-xl mx-auto bg-white rounded-[3rem] shadow-2xl overflow-hidden border border-gray-100">
+        
+        {/* Header Público */}
+        <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-10 text-white relative">
+          <div className="flex items-center gap-5 mb-8">
+            <div className="w-16 h-16 bg-white rounded-2xl p-1 shadow-2xl shrink-0">
+               <img src={selectedBarbershop?.logo || LOGO_URL} className="w-full h-full object-cover rounded-xl" />
+            </div>
+            <div>
+               <h1 className="text-3xl font-black tracking-tight">{selectedBarbershop?.name}</h1>
+               <p className="text-blue-100 text-xs flex items-center gap-1.5 font-bold uppercase tracking-widest mt-1">
+                 <MapPin size={12} /> {selectedBarbershop?.address || 'Agendamento Online'}
+               </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+              {stepIndicators.map((s, idx) => (
+                <div key={s} className="flex items-center gap-2">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs transition-all ${
+                    currentStepIndex >= idx ? 'bg-white text-blue-600 scale-110 shadow-lg' : 'bg-white/20 text-white/50'
+                  }`}>
+                    {idx + 1}
+                  </div>
+                  {idx < stepIndicators.length - 1 && <div className="w-4 h-0.5 bg-white/20 rounded-full"></div>}
+                </div>
+              ))}
+          </div>
+        </div>
+
+        <div className="p-10">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-5 py-4 rounded-2xl mb-8 flex items-center gap-3 animate-bounce">
+              <AlertCircle size={20} />
+              <p className="text-xs font-black uppercase tracking-widest">{error}</p>
+            </div>
+          )}
+
+          {step === 'phone' && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="text-center">
+                 <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                    <Phone className="text-blue-600" size={32} />
+                 </div>
+                 <h2 className="text-3xl font-black text-gray-900 mb-2">Bem-vindo!</h2>
+                 <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">Informe seu WhatsApp para começar</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">WhatsApp</label>
+                <input 
+                  type="tel" 
+                  autoFocus
+                  className="w-full bg-gray-50 border-2 border-gray-100 p-5 rounded-2xl text-2xl font-black text-center outline-none focus:border-blue-600 focus:bg-white transition-all text-black placeholder:text-gray-200"
+                  placeholder="(00) 00000-0000"
+                  value={formData.phone}
+                  onChange={e => setFormData({...formData, phone: applyPhoneMask(e.target.value)})}
+                />
+              </div>
+
+              <button 
+                onClick={searchClientByPhone}
+                disabled={formData.phone.length < 14}
+                className="w-full bg-blue-600 text-white py-6 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-2xl shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+              >
+                Continuar <ChevronRight size={18} />
+              </button>
+            </div>
+          )}
+
+          {step === 'register' && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+              <div className="text-center">
+                 <h2 className="text-2xl font-black text-gray-900">Primeiro Agendamento</h2>
+                 <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest mt-2">Complete seus dados para continuar</p>
+              </div>
+
+              <div className="space-y-6">
+                 <div>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Nome Completo</label>
+                    <input 
+                      className="w-full bg-gray-50 border-2 border-gray-100 p-4 rounded-2xl text-sm font-black outline-none focus:border-blue-600 transition-all text-black"
+                      value={formData.name}
+                      onChange={e => setFormData({...formData, name: e.target.value})}
+                    />
+                 </div>
+                 <div>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">E-mail (Opcional)</label>
+                    <input 
+                      className="w-full bg-gray-50 border-2 border-gray-100 p-4 rounded-2xl text-sm font-black outline-none focus:border-blue-600 transition-all text-black"
+                      value={formData.email}
+                      onChange={e => setFormData({...formData, email: e.target.value})}
+                    />
+                 </div>
+                 <div className="flex flex-col items-center">
+                    <div className="relative cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                       {formData.photo ? (
+                         <img src={formData.photo} className="w-20 h-20 rounded-2xl object-cover border-4 border-white shadow-xl" />
+                       ) : (
+                         <div className="w-20 h-20 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex items-center justify-center text-gray-300">
+                            {isUploading ? <Loader2 className="animate-spin" /> : <Camera size={24}/>}
+                         </div>
+                       )}
+                       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
+                    </div>
+                    <span className="text-[9px] font-black text-gray-400 uppercase mt-2">Sua Foto (Opcional)</span>
+                 </div>
+              </div>
+
+              <div className="flex gap-4">
+                 <button onClick={() => setStep('phone')} className="flex-1 bg-gray-100 text-gray-500 py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest">Voltar</button>
+                 <button onClick={() => setStep('barber')} disabled={!formData.name} className="flex-[2] bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl disabled:opacity-50">Continuar</button>
+              </div>
+            </div>
+          )}
+
+          {step === 'barber' && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+              <h2 className="text-2xl font-black text-gray-900 flex items-center gap-3"><Star className="text-yellow-500 fill-yellow-500" /> Escolha o Barbeiro</h2>
+              <div className="grid gap-4">
+                {shopBarbers.map(barber => (
+                  <button key={barber.id} onClick={() => { setFormData({...formData, barberId: barber.id}); setStep('service'); }} className="bg-gray-50 hover:bg-blue-50 border-2 border-transparent hover:border-blue-600 p-6 rounded-[2rem] flex items-center justify-between group transition-all">
+                    <div className="flex items-center gap-4">
+                       <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-white shadow-lg">
+                          {barber.photo ? <img src={barber.photo} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-blue-100 flex items-center justify-center text-blue-600 font-black text-xl">{barber.name.charAt(0)}</div>}
+                       </div>
+                       <div className="text-left">
+                          <p className="font-black text-gray-900 text-lg">{barber.nickname || barber.name}</p>
+                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Barbeiro Especialista</p>
+                       </div>
+                    </div>
+                    <ChevronRight size={24} className="text-gray-300 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setStep('phone')} className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1"><ArrowLeft size={14} /> Voltar</button>
+            </div>
+          )}
+
+          {step === 'service' && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+              <h2 className="text-2xl font-black text-gray-900 flex items-center gap-3"><Sparkles className="text-blue-500" /> O que faremos hoje?</h2>
+              <div className="grid gap-4">
+                {shopServices.map(service => (
+                  <button key={service.id} onClick={() => { setFormData({...formData, serviceId: service.id}); setStep('datetime'); }} className="bg-gray-50 hover:bg-blue-50 border-2 border-transparent hover:border-blue-600 p-6 rounded-[2rem] flex items-center justify-between group transition-all text-left">
+                    <div className="flex items-center gap-5">
+                       <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center text-blue-600 shadow-xl group-hover:bg-blue-600 group-hover:text-white transition-all"><Scissors size={24}/></div>
+                       <div>
+                          <p className="font-black text-gray-900 text-lg">{service.name}</p>
+                          <div className="flex items-center gap-4 mt-1">
+                             <span className="flex items-center gap-1 text-[10px] font-black text-gray-400 uppercase"><Clock size={12}/> {service.durationMinutes} min</span>
+                             <span className="text-[10px] font-black text-green-600 uppercase">R$ {service.price.toFixed(2)}</span>
+                          </div>
+                       </div>
+                    </div>
+                    <ChevronRight size={24} className="text-gray-300 group-hover:text-blue-600" />
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setStep('barber')} className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1"><ArrowLeft size={14} /> Voltar</button>
+            </div>
+          )}
+
+          {step === 'datetime' && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+               <h2 className="text-2xl font-black text-gray-900 flex items-center gap-3"><Calendar className="text-purple-600" /> Data e Hora</h2>
+               
+               <div>
+                  <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4">Escolha o dia</h3>
+                  <div className="flex overflow-x-auto gap-3 pb-4 custom-scrollbar">
+                     {getNextDays(14).map(date => {
+                        const dateStr = date.toLocaleDateString('en-CA');
+                        const isSelected = formData.date === dateStr;
+                        const dayOfWeek = date.getDay();
+                        const isClosed = !selectedBarber?.workDays?.includes(dayOfWeek);
+
+                        return (
+                          <button key={dateStr} disabled={isClosed} onClick={() => setFormData({...formData, date: dateStr, time: ''})} className={`min-w-[80px] p-4 rounded-2xl text-center border-2 transition-all ${isSelected ? 'bg-blue-600 border-blue-600 text-white shadow-xl scale-105' : isClosed ? 'bg-gray-50 border-gray-50 text-gray-200 cursor-not-allowed' : 'bg-white border-gray-100 text-gray-900 hover:border-blue-600'}`}>
+                             <p className="text-[10px] font-black uppercase">{getDayName(date)}</p>
+                             <p className="text-xl font-black mt-1">{date.getDate()}</p>
+                          </button>
+                        );
+                     })}
+                  </div>
+               </div>
+
+               {formData.date && (
+                 <div>
+                    <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4">Horários Disponíveis</h3>
+                    {availableSlots.length === 0 ? (
+                      <div className="text-center py-10 bg-gray-50 rounded-3xl"><p className="text-xs font-black text-gray-400 uppercase">Sem horários para hoje</p></div>
+                    ) : (
+                      <div className="grid grid-cols-4 gap-3">
+                         {availableSlots.map(slot => (
+                           <button key={slot.time} disabled={!slot.available} onClick={() => { setFormData({...formData, time: slot.time}); setStep('confirm'); }} className={`p-4 rounded-xl text-center font-black text-sm transition-all border-2 ${!slot.available ? 'bg-gray-50 border-gray-50 text-gray-200 cursor-not-allowed line-through' : 'bg-white border-gray-100 text-gray-900 hover:border-blue-600 hover:bg-blue-50'}`}>
+                              {slot.time}
+                           </button>
+                         ))}
+                      </div>
+                    )}
+                 </div>
+               )}
+               <button onClick={() => setStep('service')} className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1"><ArrowLeft size={14} /> Voltar</button>
+            </div>
+          )}
+
+          {step === 'confirm' && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+               <h2 className="text-2xl font-black text-gray-900 flex items-center gap-3"><CheckCircle2 className="text-green-600" /> Confirmar Detalhes</h2>
+               
+               <div className="bg-blue-50 border border-blue-100 rounded-[2.5rem] p-8 space-y-6">
+                  <div className="flex items-center gap-4">
+                     <div className="w-14 h-14 rounded-2xl overflow-hidden border-2 border-white shadow-lg"><img src={selectedBarber?.photo || `https://i.pravatar.cc/150?u=${selectedBarber?.id}`} className="w-full h-full object-cover" /></div>
+                     <div><p className="text-[10px] font-black text-blue-400 uppercase">Profissional</p><p className="font-black text-gray-900 text-lg">{selectedBarber?.name}</p></div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4 border-t border-blue-200/50">
+                     <div><p className="text-[10px] font-black text-blue-400 uppercase">Serviço</p><p className="font-black text-gray-900">{selectedService?.name}</p></div>
+                     <div><p className="text-[10px] font-black text-blue-400 uppercase">Valor</p><p className="font-black text-green-700">R$ {selectedService?.price.toFixed(2)}</p></div>
+                     <div><p className="text-[10px] font-black text-blue-400 uppercase">Data</p><p className="font-black text-gray-900">{formatDisplayDate(formData.date)}</p></div>
+                     <div><p className="text-[10px] font-black text-blue-400 uppercase">Hora</p><p className="font-black text-gray-900">{formData.time}</p></div>
+                  </div>
+               </div>
+
+               <button 
+                  onClick={handleFinalSubmit}
+                  disabled={isSaving}
+                  className="w-full bg-blue-600 text-white py-6 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-2xl shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+               >
+                 {isSaving ? <Loader2 className="animate-spin" /> : 'Confirmar Agendamento'}
+               </button>
+               <button onClick={() => setStep('datetime')} className="w-full text-[10px] font-black text-gray-400 uppercase tracking-widest">Revisar Horário</button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
