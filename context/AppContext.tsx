@@ -39,11 +39,11 @@ interface AppContextType {
   updateService: (service: Service) => Promise<void>;
   deleteService: (id: string) => Promise<void>;
   appointments: Appointment[];
-  addAppointment: (apt: Omit<Appointment, 'id'>) => Promise<void>;
+  addAppointment: (apt: Omit<Appointment, 'id'>) => Promise<Appointment>;
   deleteAppointment: (id: string) => Promise<void>;
   updateAppointmentStatus: (id: string, status: Appointment['status']) => Promise<void>;
   clients: Client[];
-  addClient: (client: Omit<Client, 'id'>) => Promise<void>;
+  addClient: (client: Omit<Client, 'id'>) => Promise<Client>;
   updateClient: (client: Client) => Promise<void>;
   deleteClient: (id: string) => Promise<void>;
 }
@@ -352,6 +352,7 @@ export const AppProvider = ({ children }: PropsWithChildren<{}>) => {
     if (selectedBarbershop?.googleSheetsUrl) {
       await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Agendamentos', [newApt], 'insert');
     }
+    return newApt;
   };
 
   const updateAppointmentStatus = async (id: string, status: Appointment['status']) => {
@@ -368,6 +369,7 @@ export const AppProvider = ({ children }: PropsWithChildren<{}>) => {
     if (selectedBarbershop?.googleSheetsUrl) {
       await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Clientes', [newClient], 'insert');
     }
+    return newClient;
   };
 
   const updateClient = async (client: Client) => {

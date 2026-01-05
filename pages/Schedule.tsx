@@ -1,11 +1,11 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Appointment, CalendarViewType, Role, User } from '../types';
 import { 
   ChevronLeft, ChevronRight, Plus, X, 
   Clock, Check, User as UserIcon, 
-  Lock, Trash2, Scissors, ArrowDown, AlertCircle, Loader2
+  Lock, Trash2, Scissors, ArrowDown, AlertCircle, Loader2, RefreshCw, Wifi
 } from 'lucide-react';
 
 const formatDateISO = (date: Date) => date.toLocaleDateString('en-CA');
@@ -44,12 +44,14 @@ export const sanitizeTime = (timeStr: string): string => {
 export const Schedule = () => {
   const { 
     appointments, users, services, addAppointment, 
-    deleteAppointment, currentUser, clients, selectedBarbershop 
+    deleteAppointment, currentUser, clients, selectedBarbershop,
+    syncWithGoogleSheets, isAutoSyncing
   } = useApp();
   
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewType, setViewType] = useState<CalendarViewType>('day');
   const [selectedBarberFilter, setSelectedBarberFilter] = useState<string>('all');
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -57,22 +59,40 @@ export const Schedule = () => {
 
   const [newBooking, setNewBooking] = useState({ 
     barberId: '', 
+    time: '', 
     serviceId: '', 
     clientId: '', 
-    time: '',
     loading: false
   });
+
+  // AUTO-SYNC POLLING - 60s
+  useEffect(() => {
+    const pollData = async () => {
+      if (selectedBarbershop?.googleSheetsUrl) {
+        setIsRefreshing(true);
+        try {
+          await syncWithGoogleSheets(selectedBarbershop.googleSheetsUrl);
+        } catch (err) {
+          console.error("Erro no polling da Agenda:", err);
+        } finally {
+          setTimeout(() => setIsRefreshing(false), 2000);
+        }
+      }
+    };
+    const syncInterval = setInterval(pollData, 60000);
+    return () => clearInterval(syncInterval);
+  }, [selectedBarbershop?.googleSheetsUrl]);
 
   const currentShopId = useMemo(() => {
     return selectedBarbershop?.id || currentUser?.barbershopId || '';
   }, [currentUser, selectedBarbershop]);
 
-  // FILTRO: Mostra apenas profissionais que estão com useSchedule === true
+  // FILTRO: Mostra apenas profissionais que estão com useSchedule === true (trata string ou boolean)
   const shopBarbers = useMemo(() => 
     users.filter(u => 
       String(u.barbershopId).trim() === String(currentShopId).trim() && 
       u.role !== Role.SUPER_ADMIN &&
-      u.useSchedule === true
+      (u.useSchedule === true || (u.useSchedule as any) === 'true')
     ),
     [users, currentShopId]
   );
@@ -152,7 +172,8 @@ export const Schedule = () => {
 
   const isBarberAvailable = (barber: User, time: string, date: Date) => {
     const dayOfWeek = date.getDay();
-    if (barber.workDays && !barber.workDays.includes(dayOfWeek)) return false;
+    const workDays = typeof barber.workDays === 'string' ? JSON.parse(barber.workDays) : (barber.workDays || [1,2,3,4,5,6]);
+    if (workDays && !workDays.includes(dayOfWeek)) return false;
     
     // Verificação de horário de expediente com sanitização
     const slotMin = (parseInt(time.split(':')[0]) * 60) + parseInt(time.split(':')[1]);
@@ -174,6 +195,11 @@ export const Schedule = () => {
           <h2 className="text-2xl font-black text-white tracking-tight capitalize">
             {currentDate.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' })}
           </h2>
+          {/* Indicador de Sincronização */}
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all duration-500 ${isRefreshing || isAutoSyncing ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'}`}>
+             {isRefreshing || isAutoSyncing ? <RefreshCw size={12} className="animate-spin" /> : <Wifi size={12} className="animate-pulse" />}
+             <span className="text-[9px] font-black uppercase tracking-widest">{isRefreshing || isAutoSyncing ? 'Sincronizando' : 'Sincronizado'}</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-4">

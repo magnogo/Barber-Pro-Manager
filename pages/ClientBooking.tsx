@@ -225,23 +225,25 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
     if (!selectedBarbershop || !formData.time || !formData.barberId || !formData.serviceId) return;
     setIsSaving(true);
     try {
-      let clientId = foundClient?.id;
+      let finalClientId = foundClient?.id;
+      
       if (!foundClient) {
-        const newId = `cli-${Date.now()}`;
-        await addClient({
+        // Cria novo cliente e aguarda o objeto com ID gerado pelo contexto
+        const createdClient = await addClient({
           barbershopId: selectedBarbershop.id,
           name: formData.name,
           phone: formData.phone,
           email: formData.email,
           photo: formData.photo
         });
-        clientId = newId;
+        finalClientId = createdClient.id;
       }
-      if (clientId) {
+      
+      if (finalClientId) {
         await addAppointment({
           barbershopId: selectedBarbershop.id,
           barberId: formData.barberId,
-          clientId: clientId,
+          clientId: finalClientId,
           serviceId: formData.serviceId,
           date: formData.date,
           time: formData.time,
