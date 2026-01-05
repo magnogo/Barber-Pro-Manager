@@ -45,6 +45,27 @@ interface ClientBookingProps {
   isPublic?: boolean;
 }
 
+/**
+ * Função utilitária para converter o campo workDays vindo da planilha de forma segura
+ */
+const parseWorkDaysSafe = (val: any): number[] => {
+  if (!val) return [1, 2, 3, 4, 5, 6];
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'number') return [val];
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (!trimmed) return [1, 2, 3, 4, 5, 6];
+    if (trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {}
+    }
+    return trimmed.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+  }
+  return [1, 2, 3, 4, 5, 6];
+};
+
 export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }) => {
   const { 
     selectedBarbershop, users, services, appointments, 
@@ -55,7 +76,6 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
   const fileInputRef = useRef<HTMLInputElement>(null);
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Estados do Fluxo
   const [step, setStep] = useState<'phone' | 'register' | 'barber' | 'service' | 'datetime' | 'confirm' | 'success'>(isPublic ? 'phone' : 'phone');
   const [isSyncing, setIsSyncing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -64,7 +84,6 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [error, setError] = useState('');
 
-  // Estados de Seleção
   const [formData, setFormData] = useState({
     phone: '',
     name: '',
@@ -78,7 +97,6 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
 
   const [foundClient, setFoundClient] = useState<Client | null>(null);
 
-  // Sincronização inicial
   useEffect(() => {
     const initSync = async () => {
       if (selectedBarbershop?.googleSheetsUrl) {
@@ -95,7 +113,6 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
     initSync();
   }, [selectedBarbershop?.googleSheetsUrl]);
 
-  // Efeito para reconhecimento automático do cliente enquanto digita
   useEffect(() => {
     const tel = formData.phone.replace(/\D/g, "");
     if (tel.length === 11) {
@@ -111,7 +128,6 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
     }
   }, [formData.phone, clients]);
 
-  // QR Code e Links (Admin View)
   const bookingUrl = useMemo(() => {
     if (!selectedBarbershop) return '';
     return `${window.location.origin}?shop=${selectedBarbershop.id}`;
@@ -129,7 +145,6 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
     }
   }, [isPublic, bookingUrl]);
 
-  // Filtros de Dados
   const shopBarbers = useMemo(() => 
     users.filter(u => String(u.barbershopId).trim() === String(selectedBarbershop?.id).trim() && (u.useSchedule === true || (u.useSchedule as any) === 'true')),
     [users, selectedBarbershop]
@@ -140,10 +155,9 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
     [services, selectedBarbershop]
   );
 
-  const selectedBarber = useMemo(() => shopBarbers.find(b => b.id === formData.barberId), [formData.barberId, shopBarbers]);
-  const selectedService = useMemo(() => shopServices.find(s => s.id === formData.serviceId), [formData.serviceId, shopServices]);
+  const selectedBarber = useMemo(() => shopBarbers.find(b => String(b.id) === String(formData.barberId)), [formData.barberId, shopBarbers]);
+  const selectedService = useMemo(() => shopServices.find(s => String(s.id) === String(formData.serviceId)), [formData.serviceId, shopServices]);
 
-  // Helpers
   const applyPhoneMask = (value: string) => {
     const raw = value.replace(/\D/g, '').slice(0, 11);
     if (raw.length <= 2) return raw;
@@ -165,7 +179,6 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
   const formatDisplayDate = (dateStr: string) => dateStr.split('-').reverse().join('/');
   const getDayName = (date: Date) => date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
 
-  // Logica de Busca de Cliente ao clicar no botão
   const searchClientByPhone = () => {
     const tel = formData.phone.replace(/\D/g, "");
     if (tel.length < 11) {
@@ -184,7 +197,6 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
     }
   };
 
-  // Upload de Foto
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -197,7 +209,6 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
     }
   };
 
-  // Horários Disponíveis
   const availableSlots = useMemo(() => {
     if (!selectedBarber || !formData.date || !selectedService) return [];
     
@@ -205,11 +216,11 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
     const selectedDateObj = new Date(year, month - 1, day);
     const dayOfWeek = selectedDateObj.getDay();
 
-    const workDays = typeof selectedBarber.workDays === 'string' ? JSON.parse(selectedBarber.workDays) : (selectedBarber.workDays || [1,2,3,4,5,6]);
+    const workDays = parseWorkDaysSafe(selectedBarber.workDays);
     if (workDays && !workDays.includes(dayOfWeek)) return [];
 
     const slots = [];
-    const duration = selectedService.durationMinutes;
+    const duration = Number(selectedService.durationMinutes) || 30;
     const now = new Date();
     const isToday = formData.date === now.toLocaleDateString('en-CA');
     const currentTotalMinutes = now.getHours() * 60 + now.getMinutes();
@@ -217,11 +228,13 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
     const parseTime = (t: string) => {
       const clean = sanitizeTime(t);
       const [h, m] = clean.split(':').map(Number);
-      return (h || 0) * 60 + (m || 0);
+      return (Number(h) || 0) * 60 + (Number(m) || 0);
     };
 
     const startMin = parseTime(selectedBarber.startTime || '09:00');
     const endMin = parseTime(selectedBarber.endTime || '19:00');
+
+    if (startMin >= endMin) return [];
 
     for (let m = startMin; m + duration <= endMin; m += 30) {
       const timeStr = `${Math.floor(m / 60).toString().padStart(2, '0')}:${(m % 60).toString().padStart(2, '0')}`;
@@ -238,7 +251,6 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
     return slots;
   }, [selectedBarber, formData.date, selectedService, appointments]);
 
-  // Finalização
   const handleFinalSubmit = async () => {
     if (!selectedBarbershop || !formData.time || !formData.barberId || !formData.serviceId) return;
     setIsSaving(true);
@@ -275,7 +287,6 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
     }
   };
 
-  // Render Admin View
   if (!isPublic && currentUser) {
     return (
       <div className="space-y-6 animate-slide-up">
@@ -320,7 +331,6 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
     );
   }
 
-  // Render Public View
   const stepIndicators = ['phone', 'barber', 'service', 'datetime'];
   const currentStepIndex = stepIndicators.indexOf(step === 'register' ? 'phone' : step === 'confirm' ? 'datetime' : (step as any));
 
@@ -349,8 +359,6 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
   return (
     <div className="min-h-screen bg-gray-100 py-8 px-4 font-sans">
       <div className="max-w-xl mx-auto bg-white rounded-[3rem] shadow-2xl overflow-hidden border border-gray-100">
-        
-        {/* Header Público */}
         <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-10 text-white relative">
           <div className="flex items-center gap-5 mb-8">
             <div className="w-16 h-16 bg-white rounded-2xl p-1 shadow-2xl shrink-0">
@@ -525,7 +533,7 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
                           <p className="font-black text-gray-900 text-lg">{service.name}</p>
                           <div className="flex items-center gap-4 mt-1">
                              <span className="flex items-center gap-1 text-[10px] font-black text-gray-400 uppercase"><Clock size={12}/> {service.durationMinutes} min</span>
-                             <span className="text-[10px] font-black text-green-600 uppercase">R$ {service.price.toFixed(2)}</span>
+                             <span className="text-[10px] font-black text-green-600 uppercase">R$ {Number(service.price).toFixed(2)}</span>
                           </div>
                        </div>
                     </div>
@@ -549,14 +557,12 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
                         const isSelected = formData.date === dateStr;
                         const dayOfWeek = date.getDay();
                         
-                        const selectedBarberWorkDays = typeof selectedBarber?.workDays === 'string' 
-                          ? JSON.parse(selectedBarber.workDays) 
-                          : (selectedBarber?.workDays || [1,2,3,4,5,6]);
-                          
-                        const isClosed = !selectedBarberWorkDays.includes(dayOfWeek);
+                        // Proteção contra barber indefinido
+                        const barberWorkDays = selectedBarber ? parseWorkDaysSafe(selectedBarber.workDays) : [1,2,3,4,5,6];
+                        const isClosed = !barberWorkDays.includes(dayOfWeek);
 
                         return (
-                          <button key={dateStr} disabled={isClosed} onClick={() => setFormData({...formData, date: dateStr, time: ''})} className={`min-w-[80px] p-4 rounded-2xl text-center border-2 transition-all ${isSelected ? 'bg-blue-600 border-blue-600 text-white shadow-xl scale-105' : isClosed ? 'bg-gray-50 border-gray-50 text-gray-200 cursor-not-allowed' : 'bg-white border-gray-100 text-gray-900 hover:border-blue-600'}`}>
+                          <button key={dateStr} disabled={isClosed} onClick={() => setFormData({...formData, date: dateStr, time: ''})} className={`min-w-[80px] p-4 rounded-2xl text-center border-2 transition-all shrink-0 ${isSelected ? 'bg-blue-600 border-blue-600 text-white shadow-xl scale-105' : isClosed ? 'bg-gray-50 border-gray-50 text-gray-200 cursor-not-allowed' : 'bg-white border-gray-100 text-gray-900 hover:border-blue-600'}`}>
                              <p className="text-[10px] font-black uppercase">{getDayName(date)}</p>
                              <p className="text-xl font-black mt-1">{date.getDate()}</p>
                           </button>
@@ -568,8 +574,8 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
                {formData.date && (
                  <div>
                     <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4">Horários Disponíveis</h3>
-                    {availableSlots.length === 0 ? (
-                      <div className="text-center py-10 bg-gray-50 rounded-3xl"><p className="text-xs font-black text-gray-400 uppercase">Sem horários para hoje</p></div>
+                    {!selectedBarber || availableSlots.length === 0 ? (
+                      <div className="text-center py-10 bg-gray-50 rounded-3xl"><p className="text-xs font-black text-gray-400 uppercase">Sem horários para este dia</p></div>
                     ) : (
                       <div className="grid grid-cols-4 gap-3">
                          {availableSlots.map(slot => (
@@ -596,7 +602,7 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4 border-t border-blue-200/50">
                      <div><p className="text-[10px] font-black text-blue-400 uppercase">Serviço</p><p className="font-black text-gray-900">{selectedService?.name}</p></div>
-                     <div><p className="text-[10px] font-black text-blue-400 uppercase">Valor</p><p className="font-black text-green-700">R$ {selectedService?.price.toFixed(2)}</p></div>
+                     <div><p className="text-[10px] font-black text-blue-400 uppercase">Valor</p><p className="font-black text-green-700">R$ {Number(selectedService?.price || 0).toFixed(2)}</p></div>
                      <div><p className="text-[10px] font-black text-blue-400 uppercase">Data</p><p className="font-black text-gray-900">{formatDisplayDate(formData.date)}</p></div>
                      <div><p className="text-[10px] font-black text-blue-400 uppercase">Hora</p><p className="font-black text-gray-900">{formData.time}</p></div>
                   </div>
@@ -605,7 +611,7 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
                <button 
                   onClick={handleFinalSubmit}
                   disabled={isSaving}
-                  className="w-full bg-blue-600 text-white py-6 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-2xl shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+                  className="w-full bg-blue-600 text-white py-6 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-2xl shadow-blue-500/20 hover:bg-blue-700 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3"
                >
                  {isSaving ? <Loader2 className="animate-spin" /> : 'Confirmar Agendamento'}
                </button>
