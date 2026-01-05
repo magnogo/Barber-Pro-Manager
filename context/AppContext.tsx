@@ -58,16 +58,17 @@ export const AppProvider = ({ children }: PropsWithChildren<{}>) => {
   const [isAutoSyncing, setIsAutoSyncing] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   
-  const [barbershops, setBarbershops] = useState<Barbershop[]>([]);
+  // Inicialização com MOCK DATA para garantir que o login funcione mesmo offline ou antes do sync
+  const [barbershops, setBarbershops] = useState<Barbershop[]>(MOCK_BARBERSHOPS);
   const [payments, setPayments] = useState<any[]>([]);
   const [unitAdmins, setUnitAdmins] = useState<any[]>([]);
   const [networkTotalRevenue, setNetworkTotalRevenue] = useState(0);
   const [networkTotalAppointments, setNetworkTotalAppointments] = useState(0);
 
-  const [users, setUsers] = useState<User[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
+  const [users, setUsers] = useState<User[]>(MOCK_USERS);
+  const [services, setServices] = useState<Service[]>(MOCK_SERVICES);
+  const [appointments, setAppointments] = useState<Appointment[]>(MOCK_APPOINTMENTS);
+  const [clients, setClients] = useState<Client[]>(MOCK_CLIENTS);
 
   useEffect(() => {
     syncMasterData();
@@ -81,19 +82,17 @@ export const AppProvider = ({ children }: PropsWithChildren<{}>) => {
     try {
       const shopsToSync = barbershops.filter(s => s.googleSheetsUrl && s.googleSheetsUrl.includes('script.google.com'));
       const syncPromises = shopsToSync.map(async (shop) => {
-        const [apts, svcs] = await Promise.all([
-          fetchSheetData(shop.googleSheetsUrl!, 'Agendamentos'),
-          fetchSheetData(shop.googleSheetsUrl!, 'Servicos')
-        ]);
-        if (apts && Array.isArray(apts)) {
-          totalApts += apts.length;
-          if (svcs && Array.isArray(svcs)) {
-            apts.forEach(apt => {
-              const service = svcs.find(s => String(s.id).trim() === String(apt.serviceId).trim());
-              if (service) totalRevenue += Number(service.price || 0);
-            });
-          }
-        }
+        const result = await fetchSheetData(shop.googleSheetsUrl!, 'Agendamentos');
+        const apts = Array.isArray(result) ? result : [];
+        
+        const servicesResult = await fetchSheetData(shop.googleSheetsUrl!, 'Servicos');
+        const svcs = Array.isArray(servicesResult) ? servicesResult : [];
+
+        totalApts += apts.length;
+        apts.forEach(apt => {
+          const service = svcs.find(s => String(s.id).trim() === String(apt.serviceId).trim());
+          if (service) totalRevenue += Number(service.price || 0);
+        });
       });
       await Promise.all(syncPromises);
       setNetworkTotalRevenue(totalRevenue);
@@ -114,8 +113,10 @@ export const AppProvider = ({ children }: PropsWithChildren<{}>) => {
         fetchSheetData(MASTER_SHEET_URL, 'ControlePagamentos'),
         fetchSheetData(MASTER_SHEET_URL, 'AdministradoresUnidades')
       ]);
-      if (shops) setBarbershops(shops);
-      if (payData) setPayments(payData);
+      
+      if (Array.isArray(shops)) setBarbershops(shops);
+      if (Array.isArray(payData)) setPayments(payData);
+      
       if (adminData && Array.isArray(adminData)) {
         setUnitAdmins(adminData);
         const sheetUsers: User[] = adminData.map((adm: any) => ({
@@ -127,13 +128,14 @@ export const AppProvider = ({ children }: PropsWithChildren<{}>) => {
           status: adm.status,
           photo: adm.urlfoto
         }));
+
         setUsers(prev => {
-          const existingEmails = new Set(prev.map(u => u.email.toLowerCase()));
-          const newUsers = sheetUsers.filter(u => u.email && !existingEmails.has(u.email.toLowerCase()));
           const updatedPrev = prev.map(u => {
-              const fromSheet = sheetUsers.find(su => su.email.toLowerCase() === u.email.toLowerCase());
+              const fromSheet = sheetUsers.find(su => su.email && su.email.toLowerCase() === u.email.toLowerCase());
               return fromSheet ? { ...u, ...fromSheet } : u;
           });
+          const existingEmails = new Set(updatedPrev.map(u => u.email.toLowerCase()));
+          const newUsers = sheetUsers.filter(u => u.email && !existingEmails.has(u.email.toLowerCase()));
           return [...updatedPrev, ...newUsers];
         });
       }
@@ -149,23 +151,34 @@ export const AppProvider = ({ children }: PropsWithChildren<{}>) => {
     if (!url) return;
     setIsAutoSyncing(true);
     try {
-      const result = await fetchSheetData(url, ''); // Fetch all
-      if (result) {
+      // Tenta buscar todas as abas. Se o script retornar um objeto com abas:
+      const result = await fetchSheetData(url, ''); 
+      if (result && typeof result === 'object' && !Array.isArray(result)) {
         if (result.agendamentos) setAppointments(result.agendamentos);
         if (result.clientes) setClients(result.clientes);
         if (result.servicos) setServices(result.servicos);
         if (result.funcionarios) {
-            const newUsers = result.funcionarios;
+            const newStaff = result.funcionarios;
             setUsers(prev => {
-                const existingEmails = new Set(prev.map(u => u.email.toLowerCase()));
-                const filteredNewUsers = newUsers.filter((u: any) => u.email && !existingEmails.has(u.email.toLowerCase()));
                 const updatedPrev = prev.map(u => {
-                    const fromSheet = newUsers.find((su: any) => su.email && su.email.toLowerCase() === u.email.toLowerCase());
+                    const fromSheet = newStaff.find((su: any) => su.email && su.email.toLowerCase() === u.email.toLowerCase());
                     return fromSheet ? { ...u, ...fromSheet } : u;
                 });
-                return [...updatedPrev, ...filteredNewUsers];
+                const existingEmails = new Set(updatedPrev.map(u => u.email.toLowerCase()));
+                const filteredNewStaff = newStaff.filter((u: any) => u.email && !existingEmails.has(u.email.toLowerCase()));
+                return [...updatedPrev, ...filteredNewStaff];
             });
         }
+      } else {
+        // Fallback para abas individuais se o script for versão antiga
+        const [apts, cls, svcs] = await Promise.all([
+          fetchSheetData(url, 'Agendamentos'),
+          fetchSheetData(url, 'Clientes'),
+          fetchSheetData(url, 'Servicos')
+        ]);
+        if (Array.isArray(apts)) setAppointments(apts);
+        if (Array.isArray(cls)) setClients(cls);
+        if (Array.isArray(svcs)) setServices(svcs);
       }
     } finally {
       setIsAutoSyncing(false);
@@ -177,7 +190,9 @@ export const AppProvider = ({ children }: PropsWithChildren<{}>) => {
     setLoginError(null);
     try {
         const cleanEmail = email.trim().toLowerCase();
-        const user = users.find(u => u.email.toLowerCase() === cleanEmail);
+        // Procura no estado de usuários que agora inicia com MOCK_USERS
+        const user = users.find(u => u.email && u.email.toLowerCase() === cleanEmail);
+        
         if (user) {
             setCurrentUser(user);
             if (user.role === Role.SUPER_ADMIN) {
@@ -301,7 +316,6 @@ export const AppProvider = ({ children }: PropsWithChildren<{}>) => {
   };
 
   const addAppointment = async (apt: Omit<Appointment, 'id'>) => {
-    // Sanitização para evitar o bug de objeto-na-célula
     const cleanApt = {
       id: `apt-${Date.now()}`,
       barbershopId: String(apt.barbershopId || '').trim(),
@@ -314,8 +328,6 @@ export const AppProvider = ({ children }: PropsWithChildren<{}>) => {
     };
 
     setAppointments(prev => [...prev, cleanApt as any]);
-    
-    // Se for agendamento via link público, passamos os dados do cliente para a lógica inteligente do Script
     if (selectedBarbershop?.googleSheetsUrl) {
       await saveToSheet(selectedBarbershop.googleSheetsUrl, 'Agendamentos', [cleanApt], 'insert');
     }

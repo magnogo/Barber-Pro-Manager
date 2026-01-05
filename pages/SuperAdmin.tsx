@@ -23,7 +23,8 @@ import {
   Mail,
   Shield,
   Tag,
-  CheckCircle2
+  CheckCircle2,
+  Edit2
 } from 'lucide-react';
 import { Barbershop, Role } from '../types';
 import { uploadImageToImgBB } from '../services/imageService';
@@ -96,14 +97,25 @@ export const SuperAdmin = () => {
   const handleOpenModal = (shop?: Barbershop) => {
       if (shop) {
           setEditingId(shop.id);
-          const admin = unitAdmins.find(a => a.barbershopId === shop.id);
+          const admin = unitAdmins.find(a => String(a.barbershopId).trim() === String(shop.id).trim());
           setShopForm({ 
-            ...shopForm, 
-            ...shop,
+            name: shop.name || '',
+            address: shop.address || '',
+            phone: shop.phone || '',
+            email: shop.email || '',
+            logo: shop.logo || '',
+            plan: shop.plan || 'Plano Básico',
+            monthlyFee: shop.monthlyFee || 99.90,
+            subscriptionStatus: shop.subscriptionStatus || 'ACTIVE',
+            isActive: shop.isActive !== undefined ? shop.isActive : true,
+            googleSheetsUrl: shop.googleSheetsUrl || '',
             adminName: admin?.name || '',
             adminEmail: admin?.email || '',
-            adminPhoto: admin?.urlfoto || ''
-          } as any);
+            adminPhoto: admin?.urlfoto || '',
+            adminPass: '',
+            initialPaymentStatus: 'PAID',
+            paymentMethod: 'PIX'
+          });
       } else {
           setEditingId(null);
           setShopForm({ 
@@ -371,12 +383,21 @@ export const SuperAdmin = () => {
                                       )}
                                   </td>
                                   <td className="p-6 text-right">
-                                      <button 
-                                          onClick={() => { setSelectedBarbershop(item); setView('DASHBOARD'); }}
-                                          className="bg-zinc-900 text-zinc-300 hover:bg-blue-600 hover:text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
-                                      >
-                                          Acessar
-                                      </button>
+                                      <div className="flex justify-end items-center gap-2">
+                                          <button 
+                                              onClick={() => handleOpenModal(item)}
+                                              title="Editar Empresa"
+                                              className="p-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-500 hover:text-white rounded-xl transition-all border border-zinc-800 shadow-xl"
+                                          >
+                                              <Edit2 size={16} />
+                                          </button>
+                                          <button 
+                                              onClick={() => { setSelectedBarbershop(item); setView('DASHBOARD'); }}
+                                              className="bg-zinc-900 text-zinc-300 hover:bg-blue-600 hover:text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                                          >
+                                              Acessar
+                                          </button>
+                                      </div>
                                   </td>
                                 </>
                               )}
@@ -581,7 +602,7 @@ export const SuperAdmin = () => {
                                 <button type="button" onClick={() => setModalTab(modalTab === 'dados' ? 'financeiro' : 'acesso')} className="bg-blue-600 text-white px-12 py-5 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-blue-500/10 hover:bg-blue-700 active:scale-95 transition-all">Próximo</button>
                             ) : (
                                 <button type="submit" disabled={isUploading} className="bg-white text-black px-12 py-5 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-2xl hover:bg-blue-600 hover:text-white transition-all disabled:opacity-50 active:scale-95">
-                                  {isUploading ? 'Processando...' : editingId ? 'Salvar Unidade' : 'Ativar Unidade'}
+                                  {isUploading ? 'Processando...' : editingId ? 'Salvar Alterações' : 'Ativar Unidade'}
                                 </button>
                             )}
                         </div>
