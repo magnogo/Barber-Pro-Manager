@@ -36,7 +36,8 @@ import {
   MapPin,
   Star,
   DollarSign,
-  X
+  X,
+  Heart
 } from 'lucide-react';
 import QRCodeLib from 'qrcode';
 
@@ -94,6 +95,22 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
     initSync();
   }, [selectedBarbershop?.googleSheetsUrl]);
 
+  // Efeito para reconhecimento automático do cliente enquanto digita
+  useEffect(() => {
+    const tel = formData.phone.replace(/\D/g, "");
+    if (tel.length === 11) {
+      const c = clients.find(x => x.phone.replace(/\D/g, "") === tel);
+      if (c) {
+        setFoundClient(c);
+        setError('');
+      } else {
+        setFoundClient(null);
+      }
+    } else if (tel.length < 11 && foundClient) {
+      setFoundClient(null);
+    }
+  }, [formData.phone, clients]);
+
   // QR Code e Links (Admin View)
   const bookingUrl = useMemo(() => {
     if (!selectedBarbershop) return '';
@@ -114,7 +131,7 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
 
   // Filtros de Dados
   const shopBarbers = useMemo(() => 
-    users.filter(u => String(u.barbershopId).trim() === String(selectedBarbershop?.id).trim() && u.useSchedule),
+    users.filter(u => String(u.barbershopId).trim() === String(selectedBarbershop?.id).trim() && (u.useSchedule === true || (u.useSchedule as any) === 'true')),
     [users, selectedBarbershop]
   );
 
@@ -148,7 +165,7 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
   const formatDisplayDate = (dateStr: string) => dateStr.split('-').reverse().join('/');
   const getDayName = (date: Date) => date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
 
-  // Logica de Busca de Cliente
+  // Logica de Busca de Cliente ao clicar no botão
   const searchClientByPhone = () => {
     const tel = formData.phone.replace(/\D/g, "");
     if (tel.length < 11) {
@@ -188,7 +205,8 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
     const selectedDateObj = new Date(year, month - 1, day);
     const dayOfWeek = selectedDateObj.getDay();
 
-    if (selectedBarber.workDays && !selectedBarber.workDays.includes(dayOfWeek)) return [];
+    const workDays = typeof selectedBarber.workDays === 'string' ? JSON.parse(selectedBarber.workDays) : (selectedBarber.workDays || [1,2,3,4,5,6]);
+    if (workDays && !workDays.includes(dayOfWeek)) return [];
 
     const slots = [];
     const duration = selectedService.durationMinutes;
@@ -228,7 +246,6 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
       let finalClientId = foundClient?.id;
       
       if (!foundClient) {
-        // Cria novo cliente e aguarda o objeto com ID gerado pelo contexto
         const createdClient = await addClient({
           barbershopId: selectedBarbershop.id,
           name: formData.name,
@@ -262,7 +279,6 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
   if (!isPublic && currentUser) {
     return (
       <div className="space-y-6 animate-slide-up">
-        {/* Banner Admin */}
         <div className="bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600 rounded-[2.5rem] shadow-2xl p-10 text-white relative overflow-hidden">
           <div className="absolute inset-0 bg-black/10"></div>
           <div className="relative z-10">
@@ -373,11 +389,35 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
           {step === 'phone' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="text-center">
-                 <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
-                    <Phone className="text-blue-600" size={32} />
+                 <div className="w-24 h-24 mx-auto mb-6 relative">
+                    {foundClient ? (
+                        <div className="w-full h-full animate-in zoom-in duration-300">
+                           {foundClient.photo ? (
+                             <img src={foundClient.photo} className="w-full h-full rounded-full object-cover border-4 border-blue-500 shadow-2xl" />
+                           ) : (
+                             <div className="w-full h-full bg-blue-600 rounded-full flex items-center justify-center text-white border-4 border-white shadow-2xl">
+                               <UserIcon size={40} />
+                             </div>
+                           )}
+                           <div className="absolute -bottom-1 -right-1 bg-green-500 p-2 rounded-full border-4 border-white shadow-lg">
+                              <Check size={16} className="text-white" />
+                           </div>
+                        </div>
+                    ) : (
+                        <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto shadow-inner">
+                           <Phone className="text-blue-600" size={32} />
+                        </div>
+                    )}
                  </div>
-                 <h2 className="text-3xl font-black text-gray-900 mb-2">Bem-vindo!</h2>
-                 <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">Informe seu WhatsApp para começar</p>
+                 
+                 <div className="animate-in fade-in duration-500">
+                    <h2 className="text-3xl font-black text-gray-900 mb-2">
+                      {foundClient ? `Bem-vindo de volta, ${foundClient.name.split(' ')[0]}!` : 'Bem-vindo!'}
+                    </h2>
+                    <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">
+                      {foundClient ? 'Que bom ter você aqui novamente!' : 'Informe seu WhatsApp para começar'}
+                    </p>
+                 </div>
               </div>
 
               <div className="space-y-2">
@@ -395,9 +435,11 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
               <button 
                 onClick={searchClientByPhone}
                 disabled={formData.phone.length < 14}
-                className="w-full bg-blue-600 text-white py-6 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-2xl shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+                className={`w-full py-6 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-2xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3 ${
+                  foundClient ? 'bg-green-600 shadow-green-500/20 hover:bg-green-700' : 'bg-blue-600 shadow-blue-500/20 hover:bg-blue-700'
+                }`}
               >
-                Continuar <ChevronRight size={18} />
+                {foundClient ? 'Sim, sou eu! Continuar' : 'Continuar'} <ChevronRight size={18} />
               </button>
             </div>
           )}
@@ -506,7 +548,12 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
                         const dateStr = date.toLocaleDateString('en-CA');
                         const isSelected = formData.date === dateStr;
                         const dayOfWeek = date.getDay();
-                        const isClosed = !selectedBarber?.workDays?.includes(dayOfWeek);
+                        
+                        const selectedBarberWorkDays = typeof selectedBarber?.workDays === 'string' 
+                          ? JSON.parse(selectedBarber.workDays) 
+                          : (selectedBarber?.workDays || [1,2,3,4,5,6]);
+                          
+                        const isClosed = !selectedBarberWorkDays.includes(dayOfWeek);
 
                         return (
                           <button key={dateStr} disabled={isClosed} onClick={() => setFormData({...formData, date: dateStr, time: ''})} className={`min-w-[80px] p-4 rounded-2xl text-center border-2 transition-all ${isSelected ? 'bg-blue-600 border-blue-600 text-white shadow-xl scale-105' : isClosed ? 'bg-gray-50 border-gray-50 text-gray-200 cursor-not-allowed' : 'bg-white border-gray-100 text-gray-900 hover:border-blue-600'}`}>
