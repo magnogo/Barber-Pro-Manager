@@ -33,31 +33,29 @@ export const saveToSheet = async (url: string, tab: string, data: any[], action:
 
   const baseUrl = url.trim().split('?')[0];
   try {
+    // Garantir que os dados são objetos puros e sem referências circulares
+    const cleanData = JSON.parse(JSON.stringify(data));
+    
     const payload = {
       action: action,
       tab: tab,
-      data: data 
+      data: cleanData 
     };
 
-    // Removido 'no-cors' pois ele impede o envio correto de headers de conteúdo e causa bugs no parsing do GAS
-    // Usando redirect: 'follow' pois o Google Apps Script redireciona o POST para uma URL de resultado
+    // O Google Apps Script prefere receber POST como text/plain para evitar problemas de pre-flight CORS complexos
     const response = await fetch(baseUrl, {
       method: 'POST',
       mode: 'cors', 
       redirect: 'follow',
-      cache: 'no-cache',
       headers: {
         'Content-Type': 'text/plain;charset=utf-8',
       },
       body: JSON.stringify(payload)
     });
     
-    // O Google Apps Script retorna 200 mesmo em redirecionamentos seguidos com sucesso
     return response.ok;
   } catch (error) {
-    console.error(`[Sheets] Erro ao gravar:`, error);
-    // Em alguns casos de CORS com GAS, o fetch pode lançar erro mesmo tendo gravado.
-    // Como o saveToSheet é crítico, tentamos garantir que o payload foi enviado.
+    console.error(`[Sheets] Erro ao gravar na aba ${tab}:`, error);
     return false;
   }
 };
