@@ -210,45 +210,67 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
   };
 
   const availableSlots = useMemo(() => {
-    if (!selectedBarber || !formData.date || !selectedService) return [];
-    
-    const [year, month, day] = formData.date.split('-').map(Number);
-    const selectedDateObj = new Date(year, month - 1, day);
-    const dayOfWeek = selectedDateObj.getDay();
+    try {
+      if (!selectedBarber || !formData.date || !selectedService) return [];
+      
+      const [year, month, day] = formData.date.split('-').map(Number);
+      const selectedDateObj = new Date(year, month - 1, day);
+      const dayOfWeek = selectedDateObj.getDay();
 
-    const workDays = parseWorkDaysSafe(selectedBarber.workDays);
-    if (workDays && !workDays.includes(dayOfWeek)) return [];
+      const workDays = parseWorkDaysSafe(selectedBarber.workDays);
+      if (workDays && !workDays.includes(dayOfWeek)) return [];
 
-    const slots = [];
-    const duration = Number(selectedService.durationMinutes) || 30;
-    const now = new Date();
-    const isToday = formData.date === now.toLocaleDateString('en-CA');
-    const currentTotalMinutes = now.getHours() * 60 + now.getMinutes();
+      const slots = [];
+      const duration = Number(selectedService.durationMinutes) || 30;
+      const now = new Date();
+      const isToday = formData.date === now.toLocaleDateString('en-CA');
+      const currentTotalMinutes = now.getHours() * 60 + now.getMinutes();
 
-    const parseTime = (t: string) => {
-      const clean = sanitizeTime(t);
-      const [h, m] = clean.split(':').map(Number);
-      return (Number(h) || 0) * 60 + (Number(m) || 0);
-    };
+      const parseTime = (t: string) => {
+        const clean = sanitizeTime(t);
+        if (!clean || !clean.includes(':')) return 0;
+        const [h, m] = clean.split(':').map(Number);
+        return (Number(h) || 0) * 60 + (Number(m) || 0);
+      };
 
-    const startMin = parseTime(selectedBarber.startTime || '09:00');
-    const endMin = parseTime(selectedBarber.endTime || '19:00');
+      const startMin = parseTime(selectedBarber.startTime || '09:00');
+      const endMin = parseTime(selectedBarber.endTime || '19:00');
 
-    if (startMin >= endMin) return [];
+      if (startMin >= endMin && selectedBarber.endTime?.includes('1899-12-30')) {
+          // Caso comum onde o Google Sheets buga e inverte horários se passar da meia noite
+          // Mas para simplicidade, se start >= end e não for expediente noturno, retornamos vazio
+          return [];
+      }
 
-    for (let m = startMin; m + duration <= endMin; m += 30) {
-      const timeStr = `${Math.floor(m / 60).toString().padStart(2, '0')}:${(m % 60).toString().padStart(2, '0')}`;
-      const isPast = isToday && (m < currentTotalMinutes);
-      const isBooked = appointments.some(a => 
-        String(a.barberId).trim() === String(selectedBarber.id).trim() && 
-        a.date === formData.date && 
-        sanitizeTime(a.time) === timeStr &&
-        a.status !== 'CANCELLED'
-      );
+      // Evitar loop infinito se duração for 0
+      const stepMinutes = 30;
+      
+      for (let m = startMin; m + duration <= endMin; m += stepMinutes) {
+        const hh = Math.floor(m / 60).toString().padStart(2, '0');
+        const mm = (m % 60).toString().padStart(2, '0');
+        const timeStr = `${hh}:${mm}`;
+        
+        const isPast = isToday && (m < currentTotalMinutes);
+        
+        // Verifica se o horário está ocupado
+        const isBooked = Array.isArray(appointments) && appointments.some(a => {
+          if (!a || !a.time) return false;
+          const barberMatch = String(a.barberId).trim() === String(selectedBarber.id).trim();
+          const dateMatch = String(a.date).includes(formData.date);
+          const timeMatch = sanitizeTime(a.time) === timeStr;
+          return barberMatch && dateMatch && timeMatch && a.status !== 'CANCELLED';
+        });
 
-      slots.push({ time: timeStr, available: !isBooked && !isPast });
+        slots.push({ time: timeStr, available: !isBooked && !isPast });
+        
+        // Proteção contra loops
+        if (slots.length > 100) break;
+      }
+      return slots;
+    } catch (err) {
+      console.error("Erro ao calcular slots:", err);
+      return [];
     }
-    return slots;
   }, [selectedBarber, formData.date, selectedService, appointments]);
 
   const handleFinalSubmit = async () => {
@@ -574,7 +596,7 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
                {formData.date && (
                  <div>
                     <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4">Horários Disponíveis</h3>
-                    {!selectedBarber || availableSlots.length === 0 ? (
+                    {!selectedBarber || !selectedService || availableSlots.length === 0 ? (
                       <div className="text-center py-10 bg-gray-50 rounded-3xl"><p className="text-xs font-black text-gray-400 uppercase">Sem horários para este dia</p></div>
                     ) : (
                       <div className="grid grid-cols-4 gap-3">
