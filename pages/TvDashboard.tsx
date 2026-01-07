@@ -68,7 +68,7 @@ export const TvDashboard = () => {
     return users.filter(u => 
       String(u.barbershopId).trim() === String(currentUser?.barbershopId).trim() && 
       u.role !== Role.SUPER_ADMIN &&
-      u.useSchedule === true
+      (u.useSchedule === true || (u.useSchedule as any) === 'true')
     );
   }, [users, currentUser]);
 
@@ -97,26 +97,32 @@ export const TvDashboard = () => {
 
   const getAppointmentAtTime = (barberId: string, time: string) => {
     const [slotH, slotM] = time.split(':').map(Number);
-    const slotTotalMinutes = slotH * 60 + slotM;
+    const slotTotalMinutes = (Number(slotH) || 0) * 60 + (Number(slotM) || 0);
 
     return appointments.find(a => {
       if (String(a.barberId).trim() !== String(barberId).trim() || a.date !== todayISO || a.status === 'CANCELLED') return false;
       
       const service = getService(a.serviceId);
-      const duration = service?.durationMinutes || 30;
+      // CORREÇÃO CRÍTICA: Garantir que a duração seja um número para evitar concatenação de strings
+      const duration = Number(service?.durationMinutes || 30);
       
       const [startH, startM] = sanitizeTime(a.time).split(':').map(Number);
-      const startTotalMinutes = (startH || 0) * 60 + (startM || 0);
+      const startTotalMinutes = (Number(startH) || 0) * 60 + (Number(startM) || 0);
       const endTotalMinutes = startTotalMinutes + duration;
 
+      // Um agendamento pertence ao slot se ele estiver dentro do intervalo de tempo do serviço
       return slotTotalMinutes >= startTotalMinutes && slotTotalMinutes < endTotalMinutes;
     });
   };
 
-  const calculateEndTime = (startTime: string, duration: number) => {
-    const [h, m] = startTime.split(':').map(Number);
-    const totalMinutes = h * 60 + m + duration;
-    const endH = Math.floor(totalMinutes / 60);
+  const calculateEndTime = (startTime: string, duration: any) => {
+    const cleanStart = sanitizeTime(startTime);
+    if (!cleanStart.includes(':')) return cleanStart;
+    
+    const [h, m] = cleanStart.split(':').map(Number);
+    // CORREÇÃO: Forçar Number(duration) para evitar o bug de "22:30" (soma de string 1050 + "30" = "105030")
+    const totalMinutes = (Number(h) * 60) + Number(m) + Number(duration);
+    const endH = Math.floor(totalMinutes / 60) % 24;
     const endM = totalMinutes % 60;
     return `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
   };
@@ -180,6 +186,8 @@ export const TvDashboard = () => {
           const isBusy = !!activeAppointment;
           const barberPhoto = barber.photo || barber.avatar;
           
+          // Controle de renderização para evitar duplicatas na coluna do barbeiro
+          const renderedAptIds = new Set<string>();
           let skipSlotsCount = 0;
 
           return (
@@ -200,8 +208,8 @@ export const TvDashboard = () => {
                    )}
                    <div className={`absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-[#25282e] ${isBusy ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
                  </div>
-                 <div>
-                     <h3 className="text-white font-bold text-xl">{barber.nickname || barber.name}</h3>
+                 <div className="overflow-hidden">
+                     <h3 className="text-white font-bold text-xl truncate">{barber.nickname || barber.name}</h3>
                      <div className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-full inline-flex items-center gap-1 mt-1 ${
                          isBusy ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'
                      }`}>
@@ -223,17 +231,23 @@ export const TvDashboard = () => {
 
                   const isPast = time < currentSlotString;
                   const appointment = getAppointmentAtTime(barber.id, time);
-                  const isStart = sanitizeTime(appointment?.time || '') === time;
                   
+                  // Se encontrarmos um agendamento que já foi renderizado nesta coluna, pulamos
+                  if (appointment && renderedAptIds.has(appointment.id)) {
+                      return null;
+                  }
+
                   const client = appointment ? getClient(appointment.clientId) : null;
                   const service = appointment ? getService(appointment.serviceId) : null;
                   const isInProgress = appointment?.status === 'IN_PROGRESS';
                   const isCompleted = appointment?.status === 'COMPLETED';
 
                   let flexGrow = 1;
-                  if (appointment && isStart) {
-                    const duration = service?.durationMinutes || 30;
-                    flexGrow = Math.ceil(duration / 30);
+                  if (appointment) {
+                    renderedAptIds.add(appointment.id);
+                    const duration = Number(service?.durationMinutes || 30);
+                    // Calcula quantos slots de 30min esse serviço ocupa
+                    flexGrow = Math.max(1, Math.ceil(duration / 30));
                     skipSlotsCount = flexGrow - 1;
                   }
 
@@ -259,6 +273,9 @@ export const TvDashboard = () => {
                       }
                   }
 
+                  const startTimeDisplay = appointment ? sanitizeTime(appointment.time) : time;
+                  const endTimeDisplay = appointment ? calculateEndTime(appointment.time, service?.durationMinutes || 30) : '';
+
                   return (
                     <div 
                       key={time} 
@@ -269,7 +286,7 @@ export const TvDashboard = () => {
                           <div className="flex items-center gap-3 w-full">
                               <span className={`text-xl font-bold font-mono ${timeColor}`}>
                                   {appointment ? (
-                                    `${time} - ${calculateEndTime(time, service?.durationMinutes || 30)}`
+                                    `${startTimeDisplay} - ${endTimeDisplay}`
                                   ) : (
                                     time
                                   )}
@@ -292,16 +309,16 @@ export const TvDashboard = () => {
                       {appointment ? (
                         <div className="mt-2 animate-in fade-in slide-in-from-left-4 duration-500">
                             <div className="flex justify-between items-start">
-                                <div className="flex items-start gap-3">
+                                <div className="flex items-start gap-3 w-full overflow-hidden">
                                     {client?.photo ? (
-                                      <img src={client.photo} className="w-12 h-12 rounded-full object-cover border border-white/20 shadow-lg" alt={client.name} />
+                                      <img src={client.photo} className="w-12 h-12 rounded-full object-cover border border-white/20 shadow-lg shrink-0" alt={client.name} />
                                     ) : (
-                                      <div className="w-12 h-12 rounded-full bg-gray-600 flex items-center justify-center text-white/50">
+                                      <div className="w-12 h-12 rounded-full bg-gray-600 flex items-center justify-center text-white/50 shrink-0">
                                           <UserIcon size={20} />
                                       </div>
                                     )}
                                     
-                                    <div>
+                                    <div className="overflow-hidden">
                                         <div className={`font-bold text-xl truncate ${isInProgress ? 'text-white' : 'text-gray-200'}`}>
                                             {client?.name || 'Cliente'}
                                         </div>

@@ -488,81 +488,116 @@ export const CustomersPage = () => {
             </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
-                <h3 className="text-lg font-black text-black">Sua Base de Clientes</h3>
-                <div className="flex items-center gap-3 w-full md:w-auto">
-                    <div className="relative flex-1 md:w-64">
-                        <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
-                        <input type="text" placeholder="Buscar cliente..." className="pl-10 pr-4 py-2 w-full border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 text-black font-black" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+        <div className="bg-[#1a1d21] rounded-[2.5rem] shadow-2xl border border-zinc-800 overflow-hidden">
+            <div className="p-8 border-b border-zinc-800 flex flex-col md:flex-row justify-between items-center gap-4 bg-black/20">
+                <div className="flex items-center gap-4">
+                    <div className="bg-blue-600 p-3 rounded-2xl text-white shadow-xl">
+                        <Users size={24} />
                     </div>
-                    <button onClick={() => { setEditingClientId(null); setClientFoundAutomatically(false); setNewClient({name:'', phone:'', email:'', photo:''}); setIsModalOpen(true); }} className="bg-gray-900 hover:bg-black text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-md">
-                        <Plus size={16}/> Novo Cliente
+                    <div>
+                        <h3 className="text-xl font-black text-white tracking-tight">Sua Base de Clientes</h3>
+                        <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mt-0.5">Gestão centralizada de CRM</p>
+                    </div>
+                </div>
+                
+                <div className="flex items-center gap-4 w-full md:w-auto">
+                    <div className="relative flex-1 md:w-80">
+                        <Search className="absolute left-4 top-4 text-zinc-700" size={20} />
+                        <input 
+                            type="text" 
+                            placeholder="Buscar cliente..." 
+                            className="pl-12 pr-4 py-4 w-full bg-black border border-zinc-800 rounded-2xl text-sm outline-none focus:border-blue-500 text-white font-bold shadow-2xl placeholder:text-zinc-800" 
+                            value={searchTerm} 
+                            onChange={e => setSearchTerm(e.target.value)} 
+                        />
+                    </div>
+                    <button 
+                        onClick={() => { setEditingClientId(null); setClientFoundAutomatically(false); setNewClient({name:'', phone:'', email:'', photo:''}); setIsModalOpen(true); }} 
+                        className="bg-white text-black px-8 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-600 hover:text-white transition-all shadow-xl active:scale-95"
+                    >
+                        <Plus size={18}/> Novo Cliente
                     </button>
                 </div>
             </div>
+            
             <div className="overflow-x-auto">
                 <table className="w-full text-left">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-black/40">
                         <tr>
-                            <th className="p-4 text-xs font-black text-gray-500 uppercase">Cliente</th>
-                            <th className="p-4 text-xs font-black text-gray-500 uppercase">Contato</th>
-                            <th className="p-4 text-xs font-black text-gray-500 uppercase">Perfil</th>
-                            <th className="p-4 text-xs font-black text-gray-500 uppercase text-right">Ações</th>
+                            <th className="p-6 text-[10px] font-black text-zinc-600 uppercase tracking-widest">Cliente</th>
+                            <th className="p-6 text-[10px] font-black text-zinc-600 uppercase tracking-widest">Contato</th>
+                            <th className="p-6 text-[10px] font-black text-zinc-600 uppercase tracking-widest">Perfil</th>
+                            <th className="p-6 text-[10px] font-black text-zinc-600 uppercase tracking-widest text-right">Ações</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <tbody className="divide-y divide-zinc-800/30">
                         {filteredClients.map(c => (
-                            <tr key={c.id} className="hover:bg-gray-50 transition-colors group">
-                                <td className="p-4 flex items-center gap-3">
-                                    {c.photo ? <img src={c.photo} className="w-10 h-10 rounded-full object-cover border" /> : <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-400"><User size={20} /></div>}
-                                    <p className="font-black text-black">{c.name}</p>
-                                </td>
-                                <td className="p-4 text-black font-black">{c.phone}</td>
-                                <td className="p-4">
-                                    <div className={`inline-block px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest ${segmentation.vips.some(v => v.id === c.id) ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-400'}`}>
-                                        {segmentation.vips.some(v => v.id === c.id) ? 'VIP' : 'Padrão'}
+                            <tr key={c.id} className="hover:bg-white/[0.02] transition-colors group">
+                                <td className="p-6">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center overflow-hidden shrink-0">
+                                            {c.photo ? <img src={c.photo} className="w-full h-full object-cover" /> : <div className="text-zinc-600"><User size={24} /></div>}
+                                        </div>
+                                        <p className="font-black text-white text-sm group-hover:text-blue-500 transition-colors">{c.name}</p>
                                     </div>
                                 </td>
-                                <td className="p-4 text-right">
+                                <td className="p-6 text-zinc-400 font-bold text-sm">{c.phone}</td>
+                                <td className="p-6">
+                                    <div className={`inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${segmentation.vips.some(v => v.id === c.id) ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-zinc-800 text-zinc-500 border-zinc-700'}`}>
+                                        {segmentation.vips.some(v => v.id === c.id) ? 'VIP' : 'PADRÃO'}
+                                    </div>
+                                </td>
+                                <td className="p-6 text-right">
                                     <div className="flex justify-end gap-2">
-                                        <button onClick={() => setInsightClient(c)} className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all shadow-sm"><TrendingUp size={18} /></button>
-                                        <button onClick={() => { setEditingClientId(c.id); setClientFoundAutomatically(false); setNewClient(c); setIsModalOpen(true); }} className="text-gray-400 hover:text-blue-600 p-2"><Edit3 size={18} /></button>
+                                        <button onClick={() => setInsightClient(c)} title="Ver Insights" className="p-3 bg-zinc-950 text-zinc-500 hover:text-indigo-500 border border-zinc-800 rounded-xl transition-all hover:bg-zinc-800 shadow-xl"><TrendingUp size={18} /></button>
+                                        <button onClick={() => { setEditingClientId(c.id); setClientFoundAutomatically(false); setNewClient(c); setIsModalOpen(true); }} title="Editar Cadastro" className="p-3 bg-zinc-950 text-zinc-500 hover:text-blue-500 border border-zinc-800 rounded-xl transition-all hover:bg-zinc-800 shadow-xl"><Edit3 size={18} /></button>
                                     </div>
                                 </td>
                             </tr>
                         ))}
+                        {filteredClients.length === 0 && (
+                            <tr>
+                                <td colSpan={4} className="p-20 text-center text-zinc-600">
+                                    <div className="flex flex-col items-center gap-4">
+                                        <Users size={48} className="opacity-10" />
+                                        <p className="font-bold text-sm uppercase tracking-widest">Nenhum cliente localizado na base.</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        )}
                     </tbody>
                 </table>
             </div>
         </div>
 
         {isModalOpen && (
-            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4 backdrop-blur-sm">
-                <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-200">
-                    <div className="bg-gray-900 p-6 text-white flex justify-between items-center">
+            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] p-4 backdrop-blur-xl">
+                <div className="bg-zinc-950 rounded-[3rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-200 border border-zinc-900">
+                    <div className="bg-black p-6 text-white flex justify-between items-center border-b border-zinc-900">
                         <h3 className="font-black uppercase tracking-widest text-sm">
                             {editingClientId ? (clientFoundAutomatically ? 'Cliente Localizado' : 'Editar Cliente') : 'Novo Cliente'}
                         </h3>
-                        <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/10 rounded-full"><X size={20}/></button>
+                        <button onClick={() => setIsModalOpen(false)} className="p-2 bg-zinc-900 hover:bg-zinc-800 rounded-full transition-all text-zinc-500">
+                            <X size={20}/>
+                        </button>
                     </div>
                     <form onSubmit={handleSaveClient} className="p-8 space-y-5">
                         {/* Status da Busca Automática */}
                         {clientFoundAutomatically && (
-                            <div className="bg-green-50 border border-green-200 p-4 rounded-xl flex items-center gap-3 animate-in fade-in duration-300">
+                            <div className="bg-green-500/10 border border-green-500/20 p-4 rounded-xl flex items-center gap-3 animate-in fade-in duration-300">
                                 <div className="bg-green-500 text-white p-1 rounded-full"><Check size={14} /></div>
-                                <p className="text-[10px] font-black text-green-700 uppercase tracking-widest">Cadastro localizado automaticamente!</p>
+                                <p className="text-[10px] font-black text-green-400 uppercase tracking-widest">Cadastro localizado automaticamente!</p>
                             </div>
                         )}
 
                         {/* Telefone como Primeiro Campo */}
-                        <div>
-                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block flex items-center gap-1">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1 block flex items-center gap-1">
                                 <Smartphone size={12} /> WhatsApp (Primeiro Passo)
                             </label>
                             <input 
                                 required 
-                                className={`w-full border-2 p-4 rounded-xl text-lg font-black outline-none transition-all text-black ${clientFoundAutomatically ? 'border-green-200 bg-green-50' : 'border-gray-100 bg-gray-50 focus:border-indigo-500'}`} 
+                                className={`w-full border-2 p-4 rounded-xl text-lg font-black outline-none transition-all text-white ${clientFoundAutomatically ? 'border-green-500/30 bg-green-500/5' : 'border-zinc-900 bg-black focus:border-blue-500'}`} 
                                 value={newClient.phone} 
                                 onChange={e => setNewClient({...newClient, phone: applyPhoneMask(e.target.value)})} 
                                 placeholder="(00) 00000-0000" 
@@ -572,30 +607,39 @@ export const CustomersPage = () => {
                         <div className="flex flex-col items-center mb-2">
                             <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                                 {newClient.photo ? (
-                                    <img src={newClient.photo} className="w-20 h-20 rounded-full object-cover border-4 border-indigo-50 shadow-lg" />
+                                    <img src={newClient.photo} className="w-20 h-20 rounded-full object-cover border-4 border-blue-500/30 shadow-lg" />
                                 ) : (
-                                    <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center text-gray-300 border-4 border-dashed border-gray-200">
+                                    <div className="w-20 h-20 rounded-full bg-zinc-900 flex items-center justify-center text-zinc-700 border-2 border-dashed border-zinc-800 group-hover:border-blue-500/50 transition-colors">
                                         {isUploading ? <Loader2 className="animate-spin" size={24} /> : <Camera size={24} />}
                                     </div>
                                 )}
                                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
                             </div>
-                            <span className="text-[9px] font-black text-gray-400 uppercase mt-2">Sua Foto</span>
+                            <span className="text-[9px] font-black text-zinc-600 uppercase mt-4 tracking-widest">Foto do Cliente</span>
                         </div>
 
-                        <div>
-                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">Nome Completo</label>
-                            <input required className="w-full border-2 border-gray-100 p-4 rounded-xl text-sm font-black focus:border-indigo-500 outline-none bg-white text-black" value={newClient.name} onChange={e => setNewClient({...newClient, name: e.target.value})} />
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1 block">Nome Completo</label>
+                            <input required className="w-full border-2 border-zinc-900 p-4 rounded-xl text-sm font-black focus:border-blue-500 outline-none bg-black text-white transition-all shadow-xl" value={newClient.name} onChange={e => setNewClient({...newClient, name: e.target.value})} />
                         </div>
                         
-                        <div>
-                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">E-mail (Opcional)</label>
-                            <input type="email" className="w-full border-2 border-gray-100 p-4 rounded-xl text-sm font-black focus:border-indigo-500 outline-none bg-white text-black" value={newClient.email} onChange={e => setNewClient({...newClient, email: e.target.value})} />
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1 block">E-mail (Opcional)</label>
+                            <input type="email" className="w-full border-2 border-zinc-900 p-4 rounded-xl text-sm font-black focus:border-blue-500 outline-none bg-black text-white transition-all shadow-xl" value={newClient.email} onChange={e => setNewClient({...newClient, email: e.target.value})} />
                         </div>
 
-                        <button disabled={isSaving || isUploading} className={`w-full py-4 rounded-xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 transition-all ${clientFoundAutomatically ? 'bg-green-600 text-white' : 'bg-indigo-600 text-white'}`}>
-                            {isSaving ? <Loader2 className="animate-spin" size={18}/> : editingClientId ? 'Atualizar Cadastro' : 'Cadastrar Cliente'}
-                        </button>
+                        <div className="flex flex-col gap-3 pt-4">
+                            <button disabled={isSaving || isUploading} className={`w-full py-5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 ${clientFoundAutomatically ? 'bg-green-600 text-white' : 'bg-white text-black hover:bg-blue-600 hover:text-white'}`}>
+                                {isSaving ? <Loader2 className="animate-spin" size={18}/> : editingClientId ? 'Atualizar Cadastro' : 'Cadastrar Cliente'}
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={() => setIsModalOpen(false)}
+                                className="w-full py-5 bg-zinc-900 text-zinc-500 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all hover:bg-zinc-800 hover:text-zinc-400 active:scale-95"
+                            >
+                                Cancelar
+                            </button>
+                        </div>
                     </form>
                 </div>
             </div>
