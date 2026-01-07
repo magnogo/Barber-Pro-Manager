@@ -71,10 +71,17 @@ export const StaffManagement = () => {
   const handleOpenModal = (user?: User) => {
     if (user) {
       setEditingId(user.id);
+      
+      // Lógica robusta para converter useSchedule vindo da planilha (string "TRUE"/"FALSE")
+      const rawUseSchedule = user.useSchedule;
+      const normalizedUseSchedule = 
+        rawUseSchedule === true || 
+        String(rawUseSchedule).toLowerCase() === 'true';
+
       setFormData({ 
         ...user,
         photo: user.photo || '',
-        useSchedule: user.useSchedule !== undefined ? (typeof user.useSchedule === 'string' ? user.useSchedule === 'true' : !!user.useSchedule) : true,
+        useSchedule: normalizedUseSchedule,
         startTime: sanitizeTime(user.startTime || '09:00'),
         endTime: sanitizeTime(user.endTime || '19:00'),
         workDays: parseWorkDays(user.workDays)
@@ -206,7 +213,7 @@ export const StaffManagement = () => {
                       </span>
                     </td>
                     <td className="p-6 text-center">
-                      {(staff.useSchedule === true || (staff.useSchedule as any) === 'true') ? (
+                      {(staff.useSchedule === true || String(staff.useSchedule).toLowerCase() === 'true') ? (
                           <div className="text-[10px] font-black text-emerald-500 flex items-center justify-center gap-1.5 uppercase tracking-widest bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 mx-auto w-fit">
                               Ativa
                           </div>

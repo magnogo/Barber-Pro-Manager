@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 /* Fix: Added missing 'Info' to lucide-react imports */
@@ -99,11 +100,19 @@ export const ServicesPage = () => {
 
     return (
       <div className="space-y-6">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
-                <h3 className="text-lg font-black text-black">
-                    Serviços ({shopServices.length})
-                </h3>
+        <div className="bg-zinc-900 rounded-[2.5rem] shadow-2xl border border-zinc-800 overflow-hidden">
+            <div className="p-8 border-b border-zinc-800 flex flex-col md:flex-row justify-between items-center gap-4 bg-black/20">
+                <div className="flex items-center gap-4">
+                    <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-xl shadow-indigo-500/20">
+                        <Scissors size={24} />
+                    </div>
+                    <div>
+                        <h3 className="text-xl font-black text-white tracking-tight">
+                            Serviços Ativos ({shopServices.length})
+                        </h3>
+                        <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mt-0.5">Catálogo de preços e durações</p>
+                    </div>
+                </div>
 
                 <button 
                     onClick={() => { 
@@ -112,51 +121,53 @@ export const ServicesPage = () => {
                         setNewService({name:'', durationMinutes:30, price:0}); 
                         setIsModalOpen(true); 
                     }}
-                    className="bg-gray-900 hover:bg-black text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-md"
+                    className="bg-white text-black px-8 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-indigo-600 hover:text-white transition-all shadow-xl active:scale-95"
                 >
-                    <Plus size={16}/> Novo Serviço
+                    <Plus size={18}/> Novo Serviço
                 </button>
             </div>
 
             <div className="overflow-x-auto">
                 <table className="w-full text-left">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-black/40">
                         <tr>
-                            <th className="p-4 text-xs font-black text-gray-500 uppercase">Serviço</th>
-                            <th className="p-4 text-xs font-black text-gray-500 uppercase">Duração</th>
-                            <th className="p-4 text-xs font-black text-gray-500 uppercase">Preço</th>
-                            <th className="p-4 text-xs font-black text-gray-500 uppercase text-right">Ações</th>
+                            <th className="p-6 text-[10px] font-black text-zinc-600 uppercase tracking-widest">Serviço</th>
+                            <th className="p-6 text-[10px] font-black text-zinc-600 uppercase tracking-widest">Duração</th>
+                            <th className="p-6 text-[10px] font-black text-zinc-600 uppercase tracking-widest">Preço</th>
+                            <th className="p-6 text-[10px] font-black text-zinc-600 uppercase tracking-widest text-right">Ações</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <tbody className="divide-y divide-zinc-800/50">
                         {shopServices.map(s => (
-                            <tr key={s.id} className="hover:bg-gray-50 transition-colors">
-                                <td className="p-4">
+                            <tr key={s.id} className="hover:bg-zinc-800/30 transition-colors group">
+                                <td className="p-6">
                                     <div className="flex items-center gap-3">
-                                        <div className="bg-indigo-50 p-2 rounded-lg text-indigo-500">
-                                            <Scissors size={18} />
+                                        <div className="bg-zinc-950 p-3 rounded-xl text-indigo-500 border border-zinc-800">
+                                            <Scissors size={20} />
                                         </div>
-                                        <span className="font-black text-black">{s.name}</span>
+                                        <span className="font-black text-white text-sm group-hover:text-indigo-400 transition-colors">{s.name}</span>
                                     </div>
                                 </td>
-                                <td className="p-4 text-black font-medium">
-                                    <div className="flex items-center gap-2">
-                                        <Clock size={14} className="text-gray-400" />
+                                <td className="p-6">
+                                    <div className="flex items-center gap-2 text-zinc-400 font-bold text-sm">
+                                        <Clock size={14} className="text-zinc-600" />
                                         {s.durationMinutes} min
                                     </div>
                                 </td>
-                                <td className="p-4 text-black font-black">R$ {s.price.toFixed(2)}</td>
-                                <td className="p-4 text-right">
+                                <td className="p-6">
+                                    <span className="text-emerald-500 font-black text-sm">R$ {Number(s.price || 0).toFixed(2)}</span>
+                                </td>
+                                <td className="p-6 text-right">
                                     <div className="flex justify-end gap-2">
                                         <button 
                                             onClick={() => { setEditingServiceId(s.id); setNewService(s); setIsModalOpen(true); }}
-                                            className="text-gray-400 hover:text-indigo-600 p-2 transition-colors"
+                                            className="p-3 bg-zinc-950 text-zinc-500 hover:text-indigo-500 border border-zinc-800 rounded-xl transition-all hover:bg-zinc-800"
                                         >
                                             <Edit3 size={18} />
                                         </button>
                                         <button 
                                             onClick={() => handleDelete(s.id)}
-                                            className="text-gray-400 hover:text-red-600 p-2 transition-colors"
+                                            className="p-3 bg-zinc-950 text-zinc-500 hover:text-red-500 border border-zinc-800 rounded-xl transition-all hover:bg-zinc-800"
                                         >
                                             <Trash size={18} />
                                         </button>
@@ -164,39 +175,50 @@ export const ServicesPage = () => {
                                 </td>
                             </tr>
                         ))}
+                        {shopServices.length === 0 && (
+                            <tr>
+                                <td colSpan={4} className="p-20 text-center text-zinc-600">
+                                    <div className="flex flex-col items-center gap-4">
+                                        <Scissors size={48} className="opacity-10" />
+                                        <p className="font-bold text-sm uppercase tracking-widest">Nenhum serviço cadastrado.</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        )}
                     </tbody>
                 </table>
             </div>
         </div>
 
         {isModalOpen && (
-            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4 backdrop-blur-sm">
-                <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-200">
-                    <div className="bg-gray-900 p-6 text-white flex justify-between items-center">
+            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] p-4 backdrop-blur-xl">
+                <div className="bg-zinc-950 rounded-[3rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-200 border border-zinc-900">
+                    <div className="bg-black p-6 text-white flex justify-between items-center border-b border-zinc-900">
                         <h3 className="font-black uppercase tracking-widest text-sm">
                             {editingServiceId ? (serviceFoundAutomatically ? 'Serviço Identificado' : 'Editar Serviço') : 'Novo Serviço'}
                         </h3>
-                        <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/10 rounded-full"><X size={20}/></button>
+                        <button onClick={() => setIsModalOpen(false)} className="p-2 bg-zinc-900 hover:bg-zinc-800 rounded-full transition-all text-zinc-500">
+                            <X size={20}/>
+                        </button>
                     </div>
                     
-                    <form onSubmit={handleSaveService} className="p-8 space-y-5">
+                    <form onSubmit={handleSaveService} className="p-8 space-y-6">
                         {/* Status de Serviço Existente */}
                         {serviceFoundAutomatically && (
-                            <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-center gap-3 animate-in fade-in duration-300">
-                                {/* Fix: Info icon is imported from lucide-react */}
-                                <div className="bg-blue-500 text-white p-1 rounded-full"><Info size={14} /></div>
-                                <p className="text-[10px] font-black text-blue-700 uppercase tracking-widest">Este serviço já existe no catálogo!</p>
+                            <div className="bg-indigo-500/10 border border-indigo-500/20 p-4 rounded-xl flex items-center gap-3 animate-in fade-in duration-300">
+                                <div className="bg-indigo-500 text-white p-1 rounded-full"><Info size={14} /></div>
+                                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Este serviço já existe no catálogo!</p>
                             </div>
                         )}
 
                         {/* Nome do Serviço como Campo Principal */}
-                        <div>
-                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block flex items-center gap-1">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1 block flex items-center gap-1">
                                 <Tag size={12} /> Nome do Serviço
                             </label>
                             <input 
                                 required 
-                                className={`w-full border-2 p-4 rounded-xl text-lg font-black outline-none transition-all text-black ${serviceFoundAutomatically ? 'border-blue-200 bg-blue-50' : 'border-gray-100 bg-gray-50 focus:border-indigo-500'}`} 
+                                className={`w-full border-2 p-4 rounded-xl text-lg font-black outline-none transition-all text-white ${serviceFoundAutomatically ? 'border-indigo-500/30 bg-indigo-500/5' : 'border-zinc-900 bg-black focus:border-indigo-500'}`} 
                                 value={newService.name} 
                                 onChange={e => setNewService({...newService, name: e.target.value})} 
                                 placeholder="Ex: Corte Degradê" 
@@ -207,40 +229,40 @@ export const ServicesPage = () => {
                         <div className="flex flex-col items-center mb-2">
                             <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                                 {(newService as any).photo ? (
-                                    <img src={(newService as any).photo} className="w-20 h-20 rounded-full object-cover border-4 border-indigo-50 shadow-lg" />
+                                    <img src={(newService as any).photo} className="w-20 h-20 rounded-2xl object-cover border-2 border-indigo-500/30 shadow-lg" />
                                 ) : (
-                                    <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center text-gray-300 border-4 border-dashed border-gray-200">
+                                    <div className="w-20 h-20 rounded-2xl bg-zinc-900 flex items-center justify-center text-zinc-700 border-2 border-dashed border-zinc-800 group-hover:border-indigo-500/50 transition-colors">
                                         {isUploading ? <Loader2 className="animate-spin" size={24} /> : <Scissors size={24} />}
                                     </div>
                                 )}
                                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
                             </div>
-                            <span className="text-[9px] font-black text-gray-400 uppercase mt-2">Imagem do Serviço</span>
+                            <span className="text-[9px] font-black text-zinc-600 uppercase mt-4 tracking-widest">Imagem do Serviço</span>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">Duração (Minutos)</label>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1 block">Duração (Minutos)</label>
                                 <div className="relative">
-                                    <Clock className="absolute left-4 top-4 text-gray-400" size={16} />
+                                    <Clock className="absolute left-4 top-4 text-zinc-600" size={16} />
                                     <input 
                                         type="number" 
                                         required 
-                                        className="w-full border-2 border-gray-100 pl-11 pr-4 py-4 rounded-xl text-sm font-black focus:border-indigo-500 outline-none bg-white text-black" 
+                                        className="w-full border-2 border-zinc-900 pl-11 pr-4 py-4 rounded-xl text-sm font-black focus:border-indigo-500 outline-none bg-black text-white" 
                                         value={newService.durationMinutes} 
                                         onChange={e => setNewService({...newService, durationMinutes: Number(e.target.value)})} 
                                     />
                                 </div>
                             </div>
-                            <div>
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">Preço de Venda</label>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1 block">Preço de Venda</label>
                                 <div className="relative">
-                                    <DollarSign className="absolute left-4 top-4 text-gray-400" size={16} />
+                                    <DollarSign className="absolute left-4 top-4 text-zinc-600" size={16} />
                                     <input 
                                         type="number" 
                                         step="0.01" 
                                         required 
-                                        className="w-full border-2 border-gray-100 pl-11 pr-4 py-4 rounded-xl text-sm font-black focus:border-indigo-500 outline-none bg-white text-black" 
+                                        className="w-full border-2 border-zinc-900 pl-11 pr-4 py-4 rounded-xl text-sm font-black focus:border-indigo-500 outline-none bg-black text-white" 
                                         value={newService.price} 
                                         onChange={e => setNewService({...newService, price: Number(e.target.value)})} 
                                     />
@@ -248,12 +270,21 @@ export const ServicesPage = () => {
                             </div>
                         </div>
 
-                        <button 
-                            disabled={isSaving || isUploading} 
-                            className={`w-full py-4 rounded-xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 transition-all ${serviceFoundAutomatically ? 'bg-blue-600 text-white' : 'bg-indigo-600 text-white'}`}
-                        >
-                            {isSaving ? <Loader2 className="animate-spin" size={18}/> : editingServiceId ? 'Atualizar Serviço' : 'Criar Serviço'}
-                        </button>
+                        <div className="flex flex-col gap-3 pt-4">
+                            <button 
+                                disabled={isSaving || isUploading} 
+                                className={`w-full py-5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 ${serviceFoundAutomatically ? 'bg-indigo-600 text-white' : 'bg-white text-black hover:bg-indigo-600 hover:text-white'}`}
+                            >
+                                {isSaving ? <Loader2 className="animate-spin" size={18}/> : editingServiceId ? 'Atualizar Serviço' : 'Criar Serviço'}
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={() => setIsModalOpen(false)}
+                                className="w-full py-5 bg-zinc-900 text-zinc-500 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all hover:bg-zinc-800 hover:text-zinc-400 active:scale-95"
+                            >
+                                Cancelar
+                            </button>
+                        </div>
                     </form>
                 </div>
             </div>
@@ -395,7 +426,7 @@ export const CustomersPage = () => {
         clientApts.forEach(apt => {
             const service = services.find(s => String(s.id).trim() === String(apt.serviceId).trim());
             if (service) {
-                totalSpent += service.price;
+                totalSpent += Number(service.price || 0);
                 serviceCounts[service.name] = (serviceCounts[service.name] || 0) + 1;
             }
         });
@@ -588,7 +619,7 @@ export const CustomersPage = () => {
                             </div>
                             <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 text-center">
                                 <p className="text-[9px] font-black text-gray-400 uppercase">Total Gasto</p>
-                                <p className="text-xl font-black text-indigo-600">R$ {clientInsights?.totalSpent.toFixed(2)}</p>
+                                <p className="text-xl font-black text-indigo-600">R$ {Number(clientInsights?.totalSpent || 0).toFixed(2)}</p>
                             </div>
                         </div>
                         <button onClick={() => setInsightClient(null)} className="w-full py-4 bg-gray-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest">Fechar Análise</button>

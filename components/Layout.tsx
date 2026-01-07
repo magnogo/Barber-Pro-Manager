@@ -72,6 +72,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (v === 'DATABASE_CONFIG') return 'Infraestrutura';
     if (v === 'CLIENT_BOOKING') return 'Agendamento Público';
     if (v === 'SUPER_ADMIN') return 'Gestão da Rede Master';
+    if (v === 'SERVICES') return 'SERVIÇOS';
     return v.replace('_', ' ');
   };
 

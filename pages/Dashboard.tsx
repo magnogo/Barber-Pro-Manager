@@ -27,7 +27,7 @@ export const Dashboard = () => {
       let revenue = 0;
       apts.forEach(apt => {
         const service = services.find(s => s.id === apt.serviceId);
-        revenue += service ? service.price : 0;
+        revenue += service ? Number(service.price || 0) : 0;
       });
       return { revenue, count: apts.length };
     };
@@ -85,7 +85,7 @@ export const Dashboard = () => {
         </div>
       </div>
       <h4 className="text-3xl font-black text-white tracking-tighter">
-        {typeof value === 'number' ? `R$ ${value.toLocaleString('pt-BR')}` : value}
+        {typeof value === 'number' ? `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : value}
       </h4>
     </div>
   );

@@ -34,7 +34,7 @@ export const Reports = () => {
   const stats = useMemo(() => {
     const totalRevenue = filteredAppointments.reduce((acc, apt) => {
       const service = baseData.services.find(s => String(s.id).trim() === String(apt.serviceId).trim());
-      return acc + (service?.price || 0);
+      return acc + (Number(service?.price) || 0);
     }, 0);
     const avgTicket = filteredAppointments.length > 0 ? totalRevenue / filteredAppointments.length : 0;
     return { totalRevenue, totalAppointments: filteredAppointments.length, avgTicket };
@@ -54,7 +54,7 @@ export const Reports = () => {
       const key = `${monthNames[date.getMonth()]} ${date.getFullYear()}`;
       if (months[key] !== undefined) {
           const service = baseData.services.find(s => String(s.id).trim() === String(apt.serviceId).trim());
-          months[key] += (service?.price || 0);
+          months[key] += (Number(service?.price) || 0);
       }
     });
     return Object.entries(months).map(([name, value]) => ({ name, value }));
@@ -74,6 +74,16 @@ export const Reports = () => {
     };
     getAiAnalysis();
   }, [stats]);
+
+  const KpiCard = ({ label, value, icon: Icon, color }: any) => (
+    <div className="bg-zinc-900 p-8 rounded-[2rem] border border-zinc-800 shadow-sm group">
+      <div className={`${color} w-14 h-14 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
+        <Icon size={28} className="text-white" />
+      </div>
+      <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">{label}</p>
+      <h4 className="text-3xl font-black text-white tracking-tighter">{value}</h4>
+    </div>
+  );
 
   return (
     <div className="space-y-6 pb-20">
@@ -115,19 +125,9 @@ export const Reports = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {[
-          { label: 'Receita', value: `R$ ${stats.totalRevenue.toFixed(2)}`, icon: DollarSign, color: 'bg-blue-600' },
-          { label: 'Atendimentos', value: stats.totalAppointments, icon: Calendar, color: 'bg-indigo-600' },
-          { label: 'Ticket Médio', value: `R$ ${stats.avgTicket.toFixed(2)}`, icon: TrendingUp, color: 'bg-emerald-600' }
-        ].map((kpi, i) => (
-          <div key={i} className="bg-zinc-900 p-8 rounded-[2rem] border border-zinc-800 shadow-sm group">
-            <div className={`${kpi.color} w-14 h-14 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
-              <kpi.icon size={28} className="text-white" />
-            </div>
-            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">{kpi.label}</p>
-            <h4 className="text-3xl font-black text-white tracking-tighter">{kpi.value}</h4>
-          </div>
-        ))}
+        <KpiCard label="Receita" value={`R$ ${stats.totalRevenue.toFixed(2)}`} icon={DollarSign} color="bg-blue-600" />
+        <KpiCard label="Atendimentos" value={stats.totalAppointments} icon={Calendar} color="bg-indigo-600" />
+        <KpiCard label="Ticket Médio" value={`R$ ${stats.avgTicket.toFixed(2)}`} icon={TrendingUp} color="bg-emerald-600" />
       </div>
 
       <div className="bg-zinc-900 p-8 rounded-[2.5rem] border border-zinc-800">

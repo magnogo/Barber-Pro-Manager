@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { User, Service, Client, Appointment } from '../types';
+import { User, Service, Client, Appointment, Role } from '../types';
 import { LOGO_URL } from '../constants';
 import { uploadImageToImgBB } from '../services/imageService';
 import { sanitizeTime } from './Schedule';
@@ -145,15 +145,27 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
     }
   }, [isPublic, bookingUrl]);
 
-  const shopBarbers = useMemo(() => 
-    users.filter(u => String(u.barbershopId).trim() === String(selectedBarbershop?.id).trim() && (u.useSchedule === true || (u.useSchedule as any) === 'true')),
-    [users, selectedBarbershop]
-  );
+  // Melhora a filtragem de barbeiros para ser mais resiliente com IDs e tipos
+  const shopBarbers = useMemo(() => {
+    if (!selectedBarbershop) return [];
+    const currentShopId = String(selectedBarbershop.id).toLowerCase().trim();
+    
+    return users.filter(u => {
+      const uShopId = String(u.barbershopId || '').toLowerCase().trim();
+      // Em agendamento público de unidade única, se o barbershopId estiver vazio, permitimos
+      const shopMatch = uShopId === currentShopId || (uShopId === '' && isPublic);
+      const isAvailable = u.useSchedule === true || String(u.useSchedule).toLowerCase() === 'true';
+      const isNotMaster = u.role !== Role.SUPER_ADMIN;
+      
+      return shopMatch && isAvailable && isNotMaster;
+    });
+  }, [users, selectedBarbershop, isPublic]);
 
-  const shopServices = useMemo(() => 
-    services.filter(s => String(s.barbershopId).trim() === String(selectedBarbershop?.id).trim()),
-    [services, selectedBarbershop]
-  );
+  const shopServices = useMemo(() => {
+    if (!selectedBarbershop) return [];
+    const currentShopId = String(selectedBarbershop.id).toLowerCase().trim();
+    return services.filter(s => String(s.barbershopId || '').toLowerCase().trim() === currentShopId);
+  }, [services, selectedBarbershop]);
 
   const selectedBarber = useMemo(() => shopBarbers.find(b => String(b.id) === String(formData.barberId)), [formData.barberId, shopBarbers]);
   const selectedService = useMemo(() => shopServices.find(s => String(s.id) === String(formData.serviceId)), [formData.serviceId, shopServices]);
@@ -237,12 +249,9 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
       const endMin = parseTime(selectedBarber.endTime || '19:00');
 
       if (startMin >= endMin && selectedBarber.endTime?.includes('1899-12-30')) {
-          // Caso comum onde o Google Sheets buga e inverte horários se passar da meia noite
-          // Mas para simplicidade, se start >= end e não for expediente noturno, retornamos vazio
           return [];
       }
 
-      // Evitar loop infinito se duração for 0
       const stepMinutes = 30;
       
       for (let m = startMin; m + duration <= endMin; m += stepMinutes) {
@@ -252,7 +261,6 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
         
         const isPast = isToday && (m < currentTotalMinutes);
         
-        // Verifica se o horário está ocupado
         const isBooked = Array.isArray(appointments) && appointments.some(a => {
           if (!a || !a.time) return false;
           const barberMatch = String(a.barberId).trim() === String(selectedBarber.id).trim();
@@ -263,7 +271,6 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
 
         slots.push({ time: timeStr, available: !isBooked && !isPast });
         
-        // Proteção contra loops
         if (slots.length > 100) break;
       }
       return slots;
@@ -523,22 +530,36 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
           {step === 'barber' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
               <h2 className="text-2xl font-black text-gray-900 flex items-center gap-3"><Star className="text-yellow-500 fill-yellow-500" /> Escolha o Barbeiro</h2>
-              <div className="grid gap-4">
-                {shopBarbers.map(barber => (
-                  <button key={barber.id} onClick={() => { setFormData({...formData, barberId: barber.id}); setStep('service'); }} className="bg-gray-50 hover:bg-blue-50 border-2 border-transparent hover:border-blue-600 p-6 rounded-[2rem] flex items-center justify-between group transition-all">
-                    <div className="flex items-center gap-4">
-                       <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-white shadow-lg">
-                          {barber.photo ? <img src={barber.photo} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-blue-100 flex items-center justify-center text-blue-600 font-black text-xl">{barber.name.charAt(0)}</div>}
-                       </div>
-                       <div className="text-left">
-                          <p className="font-black text-gray-900 text-lg">{barber.nickname || barber.name}</p>
-                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Barbeiro Especialista</p>
-                       </div>
-                    </div>
-                    <ChevronRight size={24} className="text-gray-300 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
-                  </button>
-                ))}
-              </div>
+              
+              {isSyncing ? (
+                <div className="flex flex-col items-center py-12 gap-4">
+                   <Loader2 className="animate-spin text-blue-600" size={32} />
+                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Sincronizando profissionais...</p>
+                </div>
+              ) : shopBarbers.length === 0 ? (
+                <div className="text-center py-12 bg-gray-50 rounded-[2rem] border-2 border-dashed border-gray-200">
+                   <UserIcon className="mx-auto text-gray-300 mb-4" size={48} />
+                   <p className="text-xs font-black text-gray-500 uppercase tracking-widest">Nenhum barbeiro disponível no momento.</p>
+                </div>
+              ) : (
+                <div className="grid gap-4">
+                  {shopBarbers.map(barber => (
+                    <button key={barber.id} onClick={() => { setFormData({...formData, barberId: barber.id}); setStep('service'); }} className="bg-gray-50 hover:bg-blue-50 border-2 border-transparent hover:border-blue-600 p-6 rounded-[2rem] flex items-center justify-between group transition-all">
+                      <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-white shadow-lg">
+                            {barber.photo ? <img src={barber.photo} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-blue-100 flex items-center justify-center text-blue-600 font-black text-xl">{barber.name.charAt(0)}</div>}
+                        </div>
+                        <div className="text-left">
+                            <p className="font-black text-gray-900 text-lg">{barber.nickname || barber.name}</p>
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Barbeiro Especialista</p>
+                        </div>
+                      </div>
+                      <ChevronRight size={24} className="text-gray-300 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+                    </button>
+                  ))}
+                </div>
+              )}
+              
               <button onClick={() => setStep('phone')} className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1"><ArrowLeft size={14} /> Voltar</button>
             </div>
           )}
@@ -579,7 +600,6 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
                         const isSelected = formData.date === dateStr;
                         const dayOfWeek = date.getDay();
                         
-                        // Proteção contra barber indefinido
                         const barberWorkDays = selectedBarber ? parseWorkDaysSafe(selectedBarber.workDays) : [1,2,3,4,5,6];
                         const isClosed = !barberWorkDays.includes(dayOfWeek);
 

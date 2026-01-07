@@ -5,6 +5,7 @@
 
 export const fetchSheetData = async (url: string, tab: string) => {
   if (!url || !url.includes('script.google.com')) {
+    console.warn("[Sheets] URL de planilha inválida ou ausente.");
     return null;
   }
   
@@ -12,16 +13,28 @@ export const fetchSheetData = async (url: string, tab: string) => {
     const baseUrl = url.trim().split('?')[0];
     const finalUrl = `${baseUrl}?tab=${encodeURIComponent(tab)}&t=${Date.now()}`;
     
+    console.debug(`[Sheets] Tentando buscar aba "${tab}" em: ${finalUrl}`);
+    
     const response = await fetch(finalUrl, {
       method: 'GET',
       mode: 'cors',
-      redirect: 'follow'
+      cache: 'no-store',
+      redirect: 'follow',
+      headers: {
+        'Accept': 'application/json'
+      }
     });
 
-    if (!response.ok) return null;
-    return await response.json();
+    if (!response.ok) {
+        console.error(`[Sheets] Erro HTTP ${response.status} na aba ${tab}`);
+        return null;
+    }
+    
+    const data = await response.json();
+    console.debug(`[Sheets] Sucesso ao carregar aba "${tab}":`, data);
+    return data;
   } catch (error) {
-    console.error(`[Sheets] Erro ao ler aba ${tab}:`, error);
+    console.error(`[Sheets] Erro crítico de rede (Failed to fetch). Verifique se a implantação do Google Script está como 'Anyone' e se a URL está correta.`, error);
     return null;
   }
 };
@@ -33,16 +46,12 @@ export const saveToSheet = async (url: string, tab: string, data: any[], action:
 
   const baseUrl = url.trim().split('?')[0];
   try {
-    // Garantir que os dados são objetos puros e sem referências circulares
-    const cleanData = JSON.parse(JSON.stringify(data));
-    
     const payload = {
       action: action,
       tab: tab,
-      data: cleanData 
+      data: JSON.parse(JSON.stringify(data)) 
     };
 
-    // O Google Apps Script prefere receber POST como text/plain para evitar problemas de pre-flight CORS complexos
     const response = await fetch(baseUrl, {
       method: 'POST',
       mode: 'cors', 
@@ -53,9 +62,15 @@ export const saveToSheet = async (url: string, tab: string, data: any[], action:
       body: JSON.stringify(payload)
     });
     
-    return response.ok;
+    if (!response.ok) {
+        console.error(`[Sheets] Erro ao gravar dados: ${response.status}`);
+        return false;
+    }
+    
+    const result = await response.json();
+    return result.success !== false;
   } catch (error) {
-    console.error(`[Sheets] Erro ao gravar na aba ${tab}:`, error);
+    console.error(`[Sheets] Erro no POST aba ${tab}:`, error);
     return false;
   }
 };

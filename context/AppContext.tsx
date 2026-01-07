@@ -58,7 +58,6 @@ export const AppProvider = ({ children }: PropsWithChildren<{}>) => {
   const [isAutoSyncing, setIsAutoSyncing] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   
-  // Inicialização com MOCK DATA para garantir que o login funcione mesmo offline ou antes do sync
   const [barbershops, setBarbershops] = useState<Barbershop[]>(MOCK_BARBERSHOPS);
   const [payments, setPayments] = useState<any[]>([]);
   const [unitAdmins, setUnitAdmins] = useState<any[]>([]);
@@ -73,6 +72,13 @@ export const AppProvider = ({ children }: PropsWithChildren<{}>) => {
   useEffect(() => {
     syncMasterData();
   }, []);
+
+  // Função auxiliar para normalizar booleanos que vem como string da planilha
+  const normalizeBoolean = (val: any): boolean => {
+    if (val === true || val === 'true' || val === 'TRUE') return true;
+    if (val === false || val === 'false' || val === 'FALSE' || val === '') return false;
+    return !!val;
+  };
 
   const calculateNetworkMetrics = async () => {
     if (barbershops.length === 0) return;
@@ -151,14 +157,18 @@ export const AppProvider = ({ children }: PropsWithChildren<{}>) => {
     if (!url) return;
     setIsAutoSyncing(true);
     try {
-      // Tenta buscar todas as abas. Se o script retornar um objeto com abas:
       const result = await fetchSheetData(url, ''); 
       if (result && typeof result === 'object' && !Array.isArray(result)) {
         if (result.agendamentos) setAppointments(result.agendamentos);
         if (result.clientes) setClients(result.clientes);
         if (result.servicos) setServices(result.servicos);
         if (result.funcionarios) {
-            const newStaff = result.funcionarios;
+            const currentShopId = selectedBarbershop?.id;
+            const newStaff = result.funcionarios.map((f: any) => ({
+              ...f,
+              barbershopId: f.barbershopId || currentShopId, // Correção: Garante ID da barbearia se faltar na planilha unitária
+              useSchedule: normalizeBoolean(f.useSchedule)
+            }));
             setUsers(prev => {
                 const updatedPrev = prev.map(u => {
                     const fromSheet = newStaff.find((su: any) => su.email && su.email.toLowerCase() === u.email.toLowerCase());
@@ -170,7 +180,6 @@ export const AppProvider = ({ children }: PropsWithChildren<{}>) => {
             });
         }
       } else {
-        // Fallback para abas individuais se o script for versão antiga
         const [apts, cls, svcs] = await Promise.all([
           fetchSheetData(url, 'Agendamentos'),
           fetchSheetData(url, 'Clientes'),
@@ -190,7 +199,6 @@ export const AppProvider = ({ children }: PropsWithChildren<{}>) => {
     setLoginError(null);
     try {
         const cleanEmail = email.trim().toLowerCase();
-        // Procura no estado de usuários que agora inicia com MOCK_USERS
         const user = users.find(u => u.email && u.email.toLowerCase() === cleanEmail);
         
         if (user) {
