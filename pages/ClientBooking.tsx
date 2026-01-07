@@ -55,10 +55,15 @@ const parseWorkDaysSafe = (val: any): number[] => {
   if (typeof val === 'string') {
     const trimmed = val.trim();
     if (!trimmed) return [1, 2, 3, 4, 5, 6];
+    
     if (trimmed.startsWith('[')) {
       try {
-        const parsed = JSON.parse(trimmed);
-        if (Array.isArray(parsed)) return parsed;
+        // Tenta capturar apenas o primeiro objeto JSON válido para evitar SyntaxError
+        const jsonMatch = trimmed.match(/\[.*\]/);
+        if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (Array.isArray(parsed)) return parsed;
+        }
       } catch (e) {}
     }
     return trimmed.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
@@ -145,14 +150,12 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
     }
   }, [isPublic, bookingUrl]);
 
-  // Melhora a filtragem de barbeiros para ser mais resiliente com IDs e tipos
   const shopBarbers = useMemo(() => {
     if (!selectedBarbershop) return [];
     const currentShopId = String(selectedBarbershop.id).toLowerCase().trim();
     
     return users.filter(u => {
       const uShopId = String(u.barbershopId || '').toLowerCase().trim();
-      // Em agendamento público de unidade única, se o barbershopId estiver vazio, permitimos
       const shopMatch = uShopId === currentShopId || (uShopId === '' && isPublic);
       const isAvailable = u.useSchedule === true || String(u.useSchedule).toLowerCase() === 'true';
       const isNotMaster = u.role !== Role.SUPER_ADMIN;
@@ -330,11 +333,6 @@ export const ClientBooking: React.FC<ClientBookingProps> = ({ isPublic = false }
                 <h1 className="text-4xl font-black tracking-tighter">Link Agenda Online</h1>
                 <p className="text-blue-100 font-bold text-lg mt-1">Sua vitrine digital de agendamentos automáticos</p>
               </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white/10 backdrop-blur-md rounded-3xl p-6 border border-white/20"><p className="text-sm font-black uppercase mb-1">Zero Fricção</p><p className="text-xs text-blue-100">Clientes agendam sem criar conta.</p></div>
-              <div className="bg-white/10 backdrop-blur-md rounded-3xl p-6 border border-white/20"><p className="text-sm font-black uppercase mb-1">24/7</p><p className="text-xs text-blue-100">Agenda aberta o tempo todo.</p></div>
-              <div className="bg-white/10 backdrop-blur-md rounded-3xl p-6 border border-white/20"><p className="text-sm font-black uppercase mb-1">Mobile</p><p className="text-xs text-blue-100">Otimizado para celulares.</p></div>
             </div>
           </div>
         </div>

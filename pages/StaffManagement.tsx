@@ -25,8 +25,12 @@ const parseWorkDays = (val: any): number[] => {
     // Tenta parse como JSON (formato [1,2,3])
     if (trimmed.startsWith('[')) {
       try {
-        const parsed = JSON.parse(trimmed);
-        if (Array.isArray(parsed)) return parsed;
+        // Correção de segurança: Tenta capturar apenas o primeiro objeto JSON válido se houver sujeira na string
+        const jsonMatch = trimmed.match(/\[.*\]/);
+        if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (Array.isArray(parsed)) return parsed;
+        }
       } catch (e) {
         console.warn("Falha ao processar workDays como JSON:", val);
       }
@@ -72,7 +76,6 @@ export const StaffManagement = () => {
     if (user) {
       setEditingId(user.id);
       
-      // Lógica robusta para converter useSchedule vindo da planilha (string "TRUE"/"FALSE")
       const rawUseSchedule = user.useSchedule;
       const normalizedUseSchedule = 
         rawUseSchedule === true || 
@@ -260,7 +263,6 @@ export const StaffManagement = () => {
                 </div>
 
                 <form onSubmit={handleSave} className="p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1 bg-zinc-950">
-                    {/* Upload de Foto */}
                     <div className="flex flex-col items-center mb-2">
                         <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                             {formData.photo ? (
@@ -323,7 +325,6 @@ export const StaffManagement = () => {
                         </div>
                     </div>
 
-                    {/* Horários */}
                     <div className="p-6 bg-black rounded-[2rem] border border-zinc-900 space-y-6">
                         <div className="flex items-center justify-between">
                             <h4 className="text-[10px] font-black text-white uppercase tracking-widest flex items-center gap-2">
